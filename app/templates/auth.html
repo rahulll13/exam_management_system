@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal | ExamCell Pro</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-dark: #050505;
+            --card-bg: rgba(15, 23, 42, 0.65);
+            --primary: #6366f1; 
+            --accent: #d946ef;  
+            --neon-blue: #0ea5e9;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            font-family: 'Space Grotesk', sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: white;
+            position: relative;
+        }
+
+        /* BACKGROUND IMAGE SECTION */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -2;
+            /* Using Option 1 */
+            background: url("{{ url_for('static', filename='profile_pics/clg2.jpg') }}") no-repeat center center/cover;
+            filter: blur(5px) brightness(0.4);
+            transform: scale(1.1);
+        }
+
+        /* STARFIELD OVERLAY */
+        .stars {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+        
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: moveStar linear infinite;
+        }
+
+        @keyframes moveStar {
+            from { transform: translateY(0); opacity: 1; }
+            to { transform: translateY(-100vh); opacity: 0; }
+        }
+
+        /* GLASS CARD */
+        .login-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 3rem;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s;
+        }
+
+        .login-card::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--accent), var(--neon-blue));
+            background-size: 200% 100%;
+            animation: gradientMove 3s linear infinite;
+        }
+
+        @keyframes gradientMove {
+            0% { background-position: 0% 0%; }
+            100% { background-position: 200% 0%; }
+        }
+
+        /* =================================########
+           UPDATED LOGO STYLING
+        ========================================= */
+        .logo-container {
+            width: 90px;
+            height: 90px;
+            /* Changed background to transparent */
+            background: transparent; 
+            border-radius: 50%;
+            /* Removed padding so image hits the edge */
+            padding: 0; 
+            margin: 0 auto 20px;
+            /* Made outline clearer */
+            border: 2px solid rgba(255, 255, 255, 0.5); 
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* Ensures square images are clipped to circle */
+            overflow: hidden; 
+        }
+
+        .logo-img {
+            width: 100%;
+            height: 100%;
+            /* Ensures image covers entire circle area */
+            object-fit: cover; 
+            /* Removed filter for cleaner look inside circle */
+        }
+        /* ========================================= */
+
+
+        /* INPUTS & BUTTONS */
+        .shake-animation { animation: headShake 0.5s ease-in-out; }
+
+        .input-group {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .input-group:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+            transform: scale(1.02);
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        .input-group-text {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            padding-left: 20px;
+        }
+
+        .form-control {
+            background: transparent !important;
+            border: none;
+            color: white !important;
+            box-shadow: none !important;
+            padding: 15px;
+            font-weight: 500;
+        }
+
+        .form-control::placeholder { color: rgba(255, 255, 255, 0.4); }
+
+        input:-webkit-autofill {
+            -webkit-box-shadow: 0 0 0 30px #0f172a inset !important;
+            -webkit-text-fill-color: white !important;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+
+        .btn-pro {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 700;
+            padding: 14px;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .btn-pro:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(217, 70, 239, 0.4);
+        }
+
+        .btn-pro::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transform: skewX(-20deg);
+            animation: sheen 3s infinite;
+        }
+
+        @keyframes sheen {
+            0% { left: -100%; }
+            20% { left: 200%; }
+            100% { left: 200%; }
+        }
+
+        .toggle-area {
+            text-align: center;
+            margin-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 20px;
+        }
+        
+        .toggle-btn {
+            background: none;
+            border: none;
+            color: #cbd5e1;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        
+        .toggle-btn:hover { color: white; text-decoration: underline; }
+
+        .reg-fields {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .reg-fields.show {
+            max-height: 200px;
+            opacity: 1;
+            margin-bottom: 15px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="stars" id="star-container"></div>
+
+    <div class="login-card animate__animated animate__fadeInUp" id="main-card">
+        
+        <div class="text-center mb-4">
+            <div class="logo-container">
+                <img src="{{ url_for('static', filename='profile_pics/logo.png') }}" alt="Logo" class="logo-img">
+            </div>
+            
+            <h3 class="fw-bold" id="form-title">Admin Access</h3>
+            <p class="text-secondary small">Authorized Personnel Only</p>
+        </div>
+
+        <form onsubmit="handleAuth(event)">
+            
+            <div class="mb-3 input-group">
+                <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                <input type="email" id="email" class="form-control" placeholder="admin@gmail.com" required autocomplete="off">
+            </div>
+
+            <div class="mb-3 input-group">
+                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                <input type="password" id="password" class="form-control" placeholder="Secure Password" required>
+            </div>
+
+            <div class="reg-fields" id="reg-container">
+                <div class="mb-3 input-group">
+                    <span class="input-group-text"><i class="fas fa-id-badge"></i></span>
+                    <input type="text" id="username" class="form-control" placeholder="Username">
+                </div>
+                <div class="mb-3 input-group" style="border-color: rgba(236, 72, 153, 0.5);">
+                    <span class="input-group-text text-danger"><i class="fas fa-key"></i></span>
+                    <input type="password" id="secret" class="form-control" placeholder="Master Secret Code">
+                </div>
+            </div>
+
+            <button type="submit" id="submit-btn" class="btn-pro">
+                AUTHENTICATE
+            </button>
+
+        </form>
+
+        <div class="toggle-area">
+            <button onclick="toggleMode()" class="toggle-btn" id="toggle-text">
+                New Admin? Create Account
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        const starContainer = document.getElementById('star-container');
+        for(let i=0; i<50; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            const size = Math.random() * 3 + 'px';
+            star.style.width = size;
+            star.style.height = size;
+            star.style.left = Math.random() * 100 + 'vw';
+            star.style.animationDuration = (Math.random() * 3 + 2) + 's';
+            star.style.opacity = Math.random();
+            starContainer.appendChild(star);
+        }
+
+        let isLogin = true;
+
+        function toggleMode() {
+            isLogin = !isLogin;
+            const regBox = document.getElementById('reg-container');
+            const title = document.getElementById('form-title');
+            const btn = document.getElementById('submit-btn');
+            const toggle = document.getElementById('toggle-text');
+
+            if (isLogin) {
+                regBox.classList.remove('show');
+                title.innerText = "Admin Access";
+                btn.innerText = "AUTHENTICATE";
+                toggle.innerText = "New Admin? Create Account";
+            } else {
+                regBox.classList.add('show');
+                title.innerText = "Register Officer";
+                btn.innerText = "CREATE ACCOUNT";
+                toggle.innerText = "Back to Login";
+            }
+        }
+
+        async function handleAuth(e) {
+            e.preventDefault();
+            const btn = document.getElementById('submit-btn');
+            
+            const originalText = btn.innerText;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> VERIFYING...';
+            btn.style.opacity = "0.7";
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            let url = isLogin ? '/api/auth/login' : '/api/auth/admin/register';
+            let body = { email, password };
+            
+            if(!isLogin) {
+                body.username = document.getElementById('username').value;
+                body.admin_secret_code = document.getElementById('secret').value;
+            }
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                
+                if(res.ok) {
+                    btn.style.background = "#10b981"; 
+                    btn.innerHTML = '<i class="fas fa-check"></i> GRANTED';
+                    setTimeout(() => {
+                        if(data.redirect_url) window.location.href = `/api${data.redirect_url}`;
+                        else if(!isLogin) location.reload();
+                    }, 1000);
+                } else {
+                    triggerShake();
+                    alert(data.error); 
+                    btn.innerText = originalText;
+                    btn.style.opacity = "1";
+                }
+            } catch (err) {
+                triggerShake();
+                btn.innerText = "CONNECTION FAILED";
+                setTimeout(() => { btn.innerText = originalText; btn.style.opacity = "1"; }, 2000);
+            }
+        }
+
+        function triggerShake() {
+            const card = document.getElementById('main-card');
+            card.classList.add('shake-animation');
+            setTimeout(() => {
+                card.classList.remove('shake-animation');
+            }, 500);
+        }
+    </script>
+</body>
+</html>

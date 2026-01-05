@@ -1,0 +1,7 @@
+http://127.0.0.1:5000/api/auth-ui/admin  -->  for admin page
+
+http://127.0.0.1:5000/api/dashboard/student --> for student page
+
+
+http://127.0.0.1:5000/api/landing
+landing page --> 

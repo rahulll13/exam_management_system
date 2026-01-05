@@ -1,0 +1,9 @@
+Flask
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-Login
+mysql-connector-python
+python-dotenv
+email_validator
+scikit-learn
+numpy

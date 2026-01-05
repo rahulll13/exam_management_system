@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ExamCell Pro - Next Gen Examination System</title>
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet" />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@300;500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --primary: #3b82f6;
+        --secondary: #8b5cf6;
+        --accent: #06b6d4;
+        --dark: #020617;
+        --glass: rgba(255, 255, 255, 0.03);
+        --glass-border: rgba(255, 255, 255, 0.08);
+      }
+
+      body {
+        font-family: "Outfit", sans-serif;
+        background-color: var(--dark);
+        color: #e2e8f0;
+        overflow-x: hidden;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4 {
+        font-family: "Space Grotesk", sans-serif;
+        letter-spacing: -0.5px;
+      }
+
+      /* --- PARTICLES BACKGROUND --- */
+      #particles-js {
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        z-index: 0;
+        background: radial-gradient(circle at center, #1e293b 0%, #020617 100%);
+      }
+
+      /* --- FLOATING NAVBAR --- */
+      .navbar {
+        background: rgba(15, 23, 42, 0.7) !important;
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--glass-border);
+        border-radius: 50px;
+        margin-top: 20px;
+        padding: 10px 25px;
+        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+      }
+
+      .navbar-brand i {
+        filter: drop-shadow(0 0 10px var(--primary));
+      }
+
+      /* --- HERO SECTION --- */
+      .hero-section {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        position: relative;
+        z-index: 1;
+        padding-top: 80px;
+      }
+
+      .text-gradient {
+        background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .highlight-text {
+        color: var(--accent);
+        text-shadow: 0 0 20px rgba(6, 182, 212, 0.5);
+      }
+
+      /* --- GLOWING BUTTONS --- */
+      .btn-glow {
+        background: linear-gradient(45deg, var(--primary), var(--secondary));
+        border: none;
+        color: white;
+        position: relative;
+        z-index: 1;
+        overflow: hidden;
+        transition: 0.3s;
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+      }
+
+      .btn-glow:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
+        color: white;
+      }
+
+      .btn-outline-glow {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        backdrop-filter: blur(5px);
+        transition: 0.3s;
+      }
+
+      .btn-outline-glow:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: white;
+        color: white;
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+      }
+
+      /* --- 3D TILT CARDS --- */
+      .role-card {
+        background: linear-gradient(
+          145deg,
+          rgba(255, 255, 255, 0.05) 0%,
+          rgba(255, 255, 255, 0.01) 100%
+        );
+        backdrop-filter: blur(16px);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        padding: 40px 30px;
+        text-align: center;
+        text-decoration: none;
+        color: white;
+        display: block;
+        height: 100%;
+        transform-style: preserve-3d;
+        transform: perspective(1000px);
+        transition: transform 0.1s; /* Controlled by JS */
+      }
+
+      .role-card:hover {
+        border-color: var(--primary);
+        box-shadow: 0 20px 40px -10px rgba(59, 130, 246, 0.3);
+      }
+
+      .card-icon-wrapper {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 25px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+        transition: 0.5s;
+      }
+
+      .role-card:hover .card-icon-wrapper {
+        background: var(--primary);
+        box-shadow: 0 0 30px var(--primary);
+        transform: scale(1.1) translateZ(20px);
+      }
+
+      .role-card h3 {
+        transform: translateZ(20px);
+      }
+
+      .role-card p {
+        transform: translateZ(10px);
+      }
+
+      /* --- FEATURE BOXES --- */
+      .feature-box {
+        padding: 30px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid transparent;
+        transition: 0.4s;
+      }
+
+      .feature-box:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.1);
+        transform: translateY(-5px);
+      }
+
+      /* --- ANIMATED HERO GRAPHIC --- */
+      .hero-visual {
+        position: relative;
+      }
+
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        padding: 20px;
+        position: absolute;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        animation: float 6s ease-in-out infinite;
+      }
+
+      .p1 {
+        top: 0;
+        right: 0;
+        width: 300px;
+        height: 180px;
+        z-index: 1;
+      }
+      .p2 {
+        top: 120px;
+        right: 150px;
+        width: 250px;
+        height: 250px;
+        z-index: 2;
+        animation-delay: 1s;
+        border-color: var(--secondary);
+      }
+      .p3 {
+        top: -50px;
+        right: 180px;
+        width: 100px;
+        height: 100px;
+        z-index: 0;
+        animation-delay: 2s;
+        border-radius: 50%;
+      }
+
+      @keyframes float {
+        0% {
+          transform: translateY(0px) rotate(0deg);
+        }
+        50% {
+          transform: translateY(-20px) rotate(1deg);
+        }
+        100% {
+          transform: translateY(0px) rotate(0deg);
+        }
+      }
+
+      /* --- ABOUT US MODAL & TEAM --- */
+      .glass-modal {
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(15px);
+        border: 1px solid var(--glass-border);
+        color: #e2e8f0;
+      }
+
+      .modal-header,
+      .modal-footer {
+        border-color: rgba(255, 255, 255, 0.1);
+      }
+
+      .btn-close-white {
+        filter: invert(1) grayscale(100%) brightness(200%);
+      }
+
+      /* Styles for the Team Section */
+      .team-member {
+        text-align: center;
+        padding: 10px;
+        transition: 0.3s;
+      }
+
+      .team-avatar-box {
+        width: 150px;
+        height: 150px;
+        margin: 0 auto 15px;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        transition: 0.4s ease;
+        background: #1e293b;
+      }
+
+      .team-avatar-box img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        filter: grayscale(20%);
+        transition: 0.4s;
+      }
+
+      .team-member:hover .team-avatar-box {
+        border-color: var(--primary); /* UPDATED to Blue */
+        box-shadow: 0 0 20px var(--primary); /* UPDATED to Blue */
+        transform: scale(1.1);
+      }
+
+      .team-member:hover .team-avatar-box img {
+        filter: grayscale(0%);
+      }
+
+      .team-name {
+        font-family: "Space Grotesk", sans-serif;
+        font-weight: 700;
+        font-size: 1rem;
+        margin-bottom: 2px;
+        color: white;
+      }
+
+      .team-role {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 600;
+        opacity: 0.8;
+      }
+
+      /* UPDATED: All roles now use var(--primary) (Blue) */
+      .role-highlight {
+        color: var(--primary);
+      }
+      .role-guide {
+        color: var(--primary);
+      }
+      .role-dev {
+        color: var(--primary);
+      }
+
+      /* Footer */
+      footer {
+        background: #020617;
+        position: relative;
+        z-index: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="particles-js"></div>
+
+    <div class="container fixed-top" style="max-width: 1140px">
+      <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+          <a class="navbar-brand fw-bold fs-4" href="#">
+            <i class="fas fa-cube text-info me-2"></i>B.I.T SINDRI<span
+              class="text-primary"
+              >Exams</span
+            >
+          </a>
+          <button
+            class="navbar-toggler"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#navbarNav"
+          >
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div
+            class="collapse navbar-collapse justify-content-end"
+            id="navbarNav"
+          >
+            <ul class="navbar-nav gap-3 align-items-center">
+              <li class="nav-item">
+                <a class="nav-link text-white" href="#roles">Portals</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link text-white" href="#features">Features</a>
+              </li>
+
+              <li class="nav-item">
+                <a
+                  class="nav-link text-accent"
+                  href="#"
+                  data-bs-toggle="modal"
+                  data-bs-target="#aboutModal"
+                  title="Meet the Team"
+                >
+                  <i class="fas fa-users-cog fa-lg"></i>
+                </a>
+              </li>
+
+              <li class="nav-item">
+                <a
+                  class="btn btn-glow rounded-pill px-4"
+                  href="/api/student/search"
+                >
+                  Find Seat <i class="fas fa-arrow-right ms-2"></i>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </nav>
+    </div>
+
+    <section class="hero-section">
+      <div class="container">
+        <div class="row align-items-center">
+          <div
+            class="col-lg-6 mb-5 mb-lg-0"
+            data-aos="fade-right"
+            data-aos-duration="1200"
+          >
+            <div
+              class="d-inline-block px-3 py-1 mb-3 rounded-pill border border-info text-info bg-dark bg-opacity-50"
+            >
+              <small
+                ><i class="fas fa-bolt me-2"></i>AI-Powered Seating
+                Algorithm</small
+              >
+            </div>
+            <h1 class="display-3 fw-bold mb-4 lh-sm text-gradient">
+              Smart Exams. <br />
+              <span class="highlight-text" id="typewriter"></span>
+            </h1>
+            <p class="lead text-secondary mb-5" style="max-width: 500px">
+              The ultimate examination management ecosystem. Eliminate chaos
+              with AI-driven seat allocation, instant retrieval, and
+              military-grade privacy.
+            </p>
+            <div class="d-flex gap-3">
+              <a
+                href="/api/student/search"
+                class="btn btn-glow btn-lg rounded-pill px-5"
+                >Find My Seat</a
+              >
+              <a
+                href="#roles"
+                class="btn btn-outline-glow btn-lg rounded-pill px-5"
+                >Admin Login</a
+              >
+            </div>
+          </div>
+
+          <div
+            class="col-lg-6"
+            style="height: 400px; position: relative"
+            data-aos="fade-left"
+            data-aos-duration="1500"
+          >
+            <div class="hero-visual w-100 h-100 d-none d-lg-block">
+              <div
+                class="glass-panel p1 d-flex align-items-center justify-content-center"
+              >
+                <div class="text-start w-100">
+                  <div class="h6 text-secondary mb-3">Seat Allocation</div>
+                  <div class="progress mb-2" style="height: 6px">
+                    <div class="progress-bar bg-info" style="width: 75%"></div>
+                  </div>
+                  <div class="progress" style="height: 6px">
+                    <div
+                      class="progress-bar bg-primary"
+                      style="width: 45%"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+              <div
+                class="glass-panel p2 d-flex flex-column align-items-center justify-content-center text-center"
+              >
+                <i
+                  class="fas fa-shield-alt fa-4x text-primary mb-3"
+                  style="filter: drop-shadow(0 0 15px #3b82f6)"
+                ></i>
+                <h4 class="fw-bold">100% Secure</h4>
+                <p class="small text-secondary m-0">Encrypted Data</p>
+              </div>
+              <div
+                class="glass-panel p3 bg-gradient-to-r from-cyan-500 to-blue-500"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="roles" class="py-5" style="position: relative; z-index: 2">
+      <div class="container py-5">
+        <div class="text-center mb-5" data-aos="fade-up">
+          <h2 class="fw-bold display-5 text-white">Select Portal</h2>
+          <div
+            class="mx-auto mt-3"
+            style="width: 60px; height: 3px; background: var(--accent)"
+          ></div>
+        </div>
+
+        <div class="row g-4 justify-content-center">
+          <div class="col-md-4" data-aos="fade-up" data-aos-delay="100">
+            <a href="/api/student/search" class="role-card tilt-card">
+              <div class="card-icon-wrapper">
+                <i class="fas fa-user-graduate text-white"></i>
+              </div>
+              <h3>Student</h3>
+              <p class="text-secondary mb-4">
+                Instant seat location via Registration ID. Visual mapping
+                included.
+              </p>
+              <span
+                class="badge bg-white bg-opacity-10 text-white border border-white border-opacity-25 rounded-pill px-3 py-2"
+                >No Login Needed</span
+              >
+            </a>
+          </div>
+
+          <div class="col-md-4" data-aos="fade-up" data-aos-delay="200">
+            <a href="/api/teacher/search" class="role-card tilt-card">
+              <div class="card-icon-wrapper">
+                <i class="fas fa-chalkboard-teacher text-white"></i>
+              </div>
+              <h3>Faculty</h3>
+              <p class="text-secondary mb-4">
+                View invigilation schedules, room duties, and student
+                attendance.
+              </p>
+              <span
+                class="badge bg-white bg-opacity-10 text-white border border-white border-opacity-25 rounded-pill px-3 py-2"
+                >Restricted Access</span
+              >
+            </a>
+          </div>
+
+          <div class="col-md-4" data-aos="fade-up" data-aos-delay="300">
+            <a href="/api/auth-ui/admin" class="role-card tilt-card">
+              <div class="card-icon-wrapper">
+                <i class="fas fa-fingerprint text-white"></i>
+              </div>
+              <h3>Admin</h3>
+              <p class="text-secondary mb-4">
+                Run algorithms, manage bulk data, and oversee the entire
+                examination process.
+              </p>
+              <span
+                class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 rounded-pill px-3 py-2"
+                >Admin Only</span
+              >
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section
+      id="features"
+      class="py-5 bg-black bg-opacity-50"
+      style="position: relative; z-index: 2"
+    >
+      <div class="container py-5">
+        <div class="row g-5">
+          <div class="col-md-4" data-aos="zoom-in-up">
+            <div class="feature-box h-100">
+              <i
+                class="fas fa-random text-accent fs-2 mb-3"
+                style="color: var(--accent)"
+              ></i>
+              <h4 class="text-white">Smart Interleaving</h4>
+              <p class="text-secondary">
+                Our "Zipper" algorithm places students from different branches
+                side-by-side to ensure maximum privacy and integrity.
+              </p>
+            </div>
+          </div>
+          <div class="col-md-4" data-aos="zoom-in-up" data-aos-delay="100">
+            <div class="feature-box h-100">
+              <i class="fas fa-search-location text-primary fs-2 mb-3"></i>
+              <h4 class="text-white">Fuzzy Search AI</h4>
+              <p class="text-secondary">
+                Forgot a digit? Our fuzzy logic algorithm finds your seat even
+                if you make minor typos in your registration number.
+              </p>
+            </div>
+          </div>
+          <div class="col-md-4" data-aos="zoom-in-up" data-aos-delay="200">
+            <div class="feature-box h-100">
+              <i class="fas fa-database text-secondary fs-2 mb-3"></i>
+              <h4 class="text-white">Bulk Data Engine</h4>
+              <p class="text-secondary">
+                Upload thousands of students via CSV in seconds. The system
+                handles duplicate checks and room allocation automatically.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer
+      class="py-4 text-center border-top border-secondary border-opacity-25"
+    >
+      <p class="mb-0 text-secondary small">
+        &copy; 2025 ExamCell Pro. Developed by
+        <i class="fas fa-heart text-danger mx-1"></i> INFORMATION TECHNOLOGY
+        DEPARTMENT OF BIT SINDRI.
+      </p>
+    </footer>
+
+    <div class="modal fade" id="aboutModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content glass-modal">
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title fw-bold font-monospace text-accent">
+                <i class="fas fa-code-branch me-2"></i> TEAM EXAMCELL
+              </h5>
+            </div>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+
+          <div class="modal-body p-4 p-lg-5">
+            <div class="text-center mb-5">
+              <h2 class="fw-bold mb-2">Meet The Team</h2>
+              <p class="text-secondary">The innovators behind ExamCell Pro</p>
+            </div>
+
+            <div
+              class="row row-cols-1 row-cols-md-3 row-cols-lg-5 g-4 justify-content-center"
+            >
+              <div class="col">
+                <div class="team-member">
+                  <div class="team-avatar-box">
+                    <img
+                      src="{{ url_for('static', filename='images/Khustaransari.jpeg') }}"
+                      alt="Guide"
+                    />
+                  </div>
+                  <div class="team-role role-highlight mb-1">
+                    Professor In-Charge
+                  </div>
+                  <div class="team-name">Prof. Khustar Ansari</div>
+                  <div class="small text-secondary">
+                    CSE Department, BIT SINDRI
+                  </div>
+                </div>
+              </div>
+
+              <div class="col">
+                <div class="team-member">
+                  <div class="team-avatar-box">
+                    <img
+                      src="{{ url_for('static', filename='images/Rajverma.jpeg') }}"
+                      alt="Guide"
+                    />
+                  </div>
+                  <div class="team-role role-guide mb-1">Guided By</div>
+                  <div class="team-name">Raj Verma</div>
+                  <div class="small text-secondary">IT 2022</div>
+                </div>
+              </div>
+
+              <div class="col">
+                <div class="team-member">
+                  <div class="team-avatar-box">
+                    <img
+                      src="{{ url_for('static', filename='images/RahulSinhaa.jpeg') }}"
+                      alt="Dev 1"
+                    />
+                  </div>
+                  <div class="team-role role-dev mb-1">Lead Developer</div>
+                  <div class="team-name">Rahul Kumar Sinha</div>
+                  <div class="small text-secondary">IT 2023</div>
+                </div>
+              </div>
+
+              <div class="col">
+                <div class="team-member">
+                  <div class="team-avatar-box">
+                    <img
+                      src="{{ url_for('static', filename='images/shubhamkumar.jpeg') }}"
+                      alt="Dev 2"
+                    />
+                  </div>
+                  <div class="team-role role-dev mb-1">Developer</div>
+                  <div class="team-name">Shubham Kumar</div>
+                  <div class="small text-secondary">IT 2023</div>
+                </div>
+              </div>
+
+              <div class="col">
+                <div class="team-member">
+                  <div class="team-avatar-box">
+                    <img
+                      src="{{ url_for('static', filename='images/ShivamKashyap.jpeg') }}"
+                      alt="Dev 3"
+                    />
+                  </div>
+                  <div class="team-role role-dev mb-1">Developer</div>
+                  <div class="team-name">Shivam Kumar Kashyap</div>
+                  <div class="small text-secondary">IT 2023</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer justify-content-center border-0 pb-4">
+            <p class="small text-secondary mb-0">
+              <i class="fas fa-heart text-danger"></i> Designed at BIT Sindri
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    <script src="https://unpkg.com/typed.js@2.0.16/dist/typed.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.7.0/vanilla-tilt.min.js"></script>
+
+    <script>
+      // 1. Initialize AOS
+      AOS.init({
+        once: true,
+        offset: 100,
+      });
+
+      // 2. Initialize Particles.js (The Neural Network Effect)
+      particlesJS("particles-js", {
+        particles: {
+          number: { value: 80, density: { enable: true, value_area: 800 } },
+          color: { value: "#ffffff" },
+          shape: { type: "circle" },
+          opacity: { value: 0.3, random: false },
+          size: { value: 3, random: true },
+          line_linked: {
+            enable: true,
+            distance: 150,
+            color: "#3b82f6",
+            opacity: 0.2,
+            width: 1,
+          },
+          move: {
+            enable: true,
+            speed: 2,
+            direction: "none",
+            random: false,
+            out_mode: "out",
+          },
+        },
+        interactivity: {
+          detect_on: "canvas",
+          events: {
+            onhover: { enable: true, mode: "grab" },
+            onclick: { enable: true, mode: "push" },
+          },
+          modes: {
+            grab: { distance: 140, line_linked: { opacity: 0.6 } },
+          },
+        },
+        retina_detect: true,
+      });
+
+      // 3. Initialize Typewriter Effect
+      var typed = new Typed("#typewriter", {
+        strings: ["Zero Chaos.", "Zero Stress.", "100% Accuracy."],
+        typeSpeed: 50,
+        backSpeed: 30,
+        loop: true,
+        backDelay: 2000,
+      });
+
+      // 4. Initialize 3D Tilt Effect on Cards
+      VanillaTilt.init(document.querySelectorAll(".tilt-card"), {
+        max: 15,
+        speed: 400,
+        glare: true,
+        "max-glare": 0.2,
+        scale: 1.05,
+      });
+    </script>
+  </body>
+</html>
