@@ -842,3 +842,38 @@ def attendance_sheet_data():
     except Exception as e:
         print(f"Error generating attendance: {e}")
         return jsonify({'error': str(e)}), 500
+    
+@api_bp.route('/admin/delete-students-by-session', methods=['POST'])
+def delete_students_by_session():
+    try:
+        data = request.json
+        session_target = data.get('session')
+        
+        if not session_target:
+            return jsonify({'error': 'Session is required'}), 400
+
+        # 1. Find all students in this session
+        students = Student.query.filter_by(session=session_target).all()
+        
+        if not students:
+            return jsonify({'error': f'No students found in session: {session_target}'}), 404
+
+        student_ids = [s.id for s in students]
+
+        # 2. Delete their Seat Assignments first (to avoid Foreign Key errors)
+        # Using synchronize_session=False is efficient for bulk deletes
+        delete_seats = SeatAssignment.query.filter(SeatAssignment.student_id.in_(student_ids)).delete(synchronize_session=False)
+        
+        # 3. Delete the Students
+        delete_count = Student.query.filter_by(session=session_target).delete(synchronize_session=False)
+
+        db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Successfully deleted {delete_count} students and {delete_seats} seat assignments for session {session_target}.'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
