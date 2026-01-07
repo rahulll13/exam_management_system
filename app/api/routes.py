@@ -9,8 +9,8 @@ from sqlalchemy import func
 from app import db
 from app.models import Student, Admin, Room, Exam, SeatAssignment, Teacher, Invigilation
 from app.services.ai_engine import ai_engine
-
-from app.services.seating_algo import generate_multi_branch_seating, allocate_and_seat_global
+from app.services.seating_algo import generate_multi_branch_seating
+from app.models import SeatAssignment, Student, Room, Exam  # Ensure these are imported at the top
 
 api_bp = Blueprint('api', __name__)
 
@@ -148,33 +148,12 @@ def update_room():
 def get_student_stats():
     data = request.json
     query = db.session.query(Student.branch, func.count(Student.id))
-    
-    # 1. Filter by Session
-    if data.get('session'): 
-        query = query.filter(Student.session.like(f"%{data['session']}%"))
-    
-    # 2. Filter by Course (SMART FIX)
-    if data.get('course'):
-        if data['course'] == 'B.Tech':
-            query = query.filter(
-                (Student.course == data['course']) | 
-                (Student.course == None) | 
-                (Student.course == "")
-            )
-        else:
-            query = query.filter(Student.course == data['course'])
-        
-    # 3. Filter by Branch
-    if data.get('branches') and data.get('branches').strip().upper() != 'ALL': 
+    if data.get('session'): query = query.filter(Student.session.like(f"%{data['session']}%"))
+    if data.get('branches'): 
         branch_list = [b.strip() for b in data['branches'].split(',')]
         query = query.filter(Student.branch.in_(branch_list))
-        
     results = query.group_by(Student.branch).all()
-    
-    return jsonify({
-        "matching_students": sum(c for _, c in results), 
-        "branch_breakdown": {b: c for b, c in results}
-    })
+    return jsonify({"matching_students": sum(c for _, c in results), "branch_breakdown": {b: c for b, c in results}})
 
 @api_bp.route('/admin/bulk-upload', methods=['POST'])
 def bulk_upload_students():
@@ -198,52 +177,24 @@ def bulk_upload_students():
         stream.seek(0); next(stream)
         csv_input = csv.DictReader(stream, fieldnames=headers, dialect=dialect)
         
-        success = 0
-        skipped_details = [] 
-        
+        success, skipped = 0, 0
         for row in csv_input:
             roll = row.get('roll_number', '').strip()
-            name = row.get('name', 'Unknown').strip()
+            if not roll: continue
             
-            if not roll: 
-                skipped_details.append({"name": name, "roll": "N/A", "reason": "Missing Roll Number"})
-                continue
-            
-            raw_email = row.get('email', '').strip()
-            if raw_email:
-                email_val = raw_email
-            else:
-                email_val = f"{roll}@no-email.com"
+            # Use CSV Registration Number if present, otherwise use Roll Number
+            csv_reg = row.get('registration_number', '').strip()
+            final_reg_no = csv_reg if csv_reg else roll
 
-            raw_reg = row.get('registration_number', '').strip()
-            reg_val = raw_reg if raw_reg else roll
-
-            duplicate_filter = (Student.roll_number == roll) | (Student.registration_number == reg_val)
-            if raw_email:
-                duplicate_filter = duplicate_filter | (Student.email == email_val)
-
-            existing_student = Student.query.filter(duplicate_filter).first()
-
-            if existing_student:
-                conflict_reason = "Duplicate Entry"
-                if existing_student.roll_number == roll:
-                    conflict_reason = "Duplicate Roll Number"
-                elif existing_student.registration_number == reg_val:
-                    conflict_reason = f"Duplicate Reg No ({reg_val})"
-                elif raw_email and existing_student.email == email_val:
-                    conflict_reason = f"Duplicate Email ({email_val})"
+            # Check exist (Roll OR Reg)
+            if Student.query.filter((Student.roll_number == roll) | (Student.registration_number == final_reg_no)).first():
+                skipped += 1; continue
                 
-                skipped_details.append({"name": name, "roll": roll, "reason": conflict_reason})
-                continue  
-            
-            course_val = row.get('course', 'B.Tech').strip() 
-
             student = Student(
-                name=name, 
+                name=row.get('name', '').strip(), 
                 roll_number=roll,
-                registration_number=reg_val,
-                email=email_val, 
-                course=course_val, 
+                registration_number=final_reg_no, 
+                email=row.get('email', '').strip(), 
                 branch=row.get('branch', '').strip(),
                 session=row.get('session', '2025').strip(), 
                 profile_image='default.jpg'
@@ -251,48 +202,10 @@ def bulk_upload_students():
             student.set_password('welcome123')
             db.session.add(student)
             success += 1
-            
         db.session.commit()
-        
-        return jsonify({
-            "message": f"Process Complete: Added {success}, Skipped {len(skipped_details)}",
-            "skipped_count": len(skipped_details),
-            "skipped_data": skipped_details
-        })
-
+        return jsonify({"message": f"Added {success}, Skipped {skipped}"})
     except Exception as e:
-        db.session.rollback()
-        print(f"Upload Error: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-    
-@api_bp.route('/admin/delete-students-by-session', methods=['POST'])
-def delete_students_by_session():
-    data = request.json
-    session_to_delete = data.get('session', '').strip()
-
-    if not session_to_delete:
-        return jsonify({"error": "Session is required"}), 400
-
-    try:
-        students = Student.query.filter_by(session=session_to_delete).all()
-        if not students:
-            return jsonify({"error": f"No students found for session '{session_to_delete}'"}), 404
-
-        student_ids = [s.id for s in students]
-
-        deleted_seats = SeatAssignment.query.filter(SeatAssignment.student_id.in_(student_ids)).delete(synchronize_session=False)
-        deleted_students = Student.query.filter_by(session=session_to_delete).delete(synchronize_session=False)
-
-        db.session.commit()
-
-        return jsonify({
-            "success": True,
-            "message": f"Successfully deleted {deleted_students} students and cleared {deleted_seats} seats for batch '{session_to_delete}'."
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        db.session.rollback(); return jsonify({"error": str(e)}), 500
 
 # ==========================================
 # 4. SEATING ALGORITHM & CHARTS
@@ -302,49 +215,37 @@ def delete_students_by_session():
 def run_seating_algo():
     data = request.json
     
-    raw_branch_input = data.get('branches', 'ALL')
-    global_branches_str = raw_branch_input.strip().upper()
-    room_branch_map = data.get('room_branch_map', {}) 
+    if data['branches'].strip().upper() == 'ALL':
+        unique_branches = db.session.query(Student.branch).distinct().all()
+        branch_names = [b[0] for b in unique_branches] 
+    else:
+        branch_names = [b.strip() for b in data['branches'].split(',')]
 
     target_session = data.get('target_session', '').strip()
-    target_course = data.get('course', 'B.Tech').strip()
-    
-    try: max_branches_per_room = int(data.get('max_branches', 10))
-    except: max_branches_per_room = 10
 
-    def get_students_for_branches(branch_str):
-        priority_map = {}
-        if branch_str == 'ALL':
-            unique_branches = db.session.query(Student.branch).distinct().all()
-            b_names = [b[0] for b in unique_branches]
-            b_names.sort()
-            priority_map = {name: i for i, name in enumerate(b_names)}
-        else:
-            b_names = [b.strip() for b in branch_str.split(',')]
-            priority_map = {name: i for i, name in enumerate(b_names)}
-            
-        pool = []
-        for branch in b_names:
-            query = Student.query.filter_by(branch=branch)
-            if target_course: query = query.filter_by(course=target_course)
-            if target_session: query = query.filter_by(session=target_session)
-            students = query.all()
-            if students: pool.extend(students)
-        
-        pool.sort(key=lambda s: (
-            priority_map.get(s.branch, 999),
-            s.branch,                        
-            len(str(s.registration_number).strip()), 
-            str(s.registration_number).strip()
-        ))
-        return pool
+    all_students_pool = []
+    for branch in branch_names:
+        query = Student.query.filter_by(branch=branch)
+        if target_session:
+            query = query.filter_by(session=target_session)
+        students = query.all()
+        if students:
+            all_students_pool.extend(students)
+    
+    if not all_students_pool:
+        return jsonify({"success": False, "error": "No students found."})
+
+    # Strict Sort by Roll Number
+    all_students_pool.sort(key=lambda s: (s.branch, s.roll_number))
 
     try:
         exam_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+        
         raw_name = data['exam_name']
         sem = data.get('semester', '')
         final_exam_name = f"{raw_name} - {sem}" if sem else raw_name
         
+        # Check if exam exists strictly
         exam = Exam.query.filter_by(name=final_exam_name, date=exam_date, time_slot=data['time']).first()
         if not exam:
             exam = Exam(name=final_exam_name, subject_code="MIXED", date=exam_date, time_slot=data['time'])
@@ -353,75 +254,52 @@ def run_seating_algo():
         SeatAssignment.query.filter_by(exam_id=exam.id).delete()
         db.session.commit()
 
-        is_global_allocation = str(data['room_id']).lower() == 'all'
-        
-        if is_global_allocation:
-            all_rooms = Room.query.order_by(Room.capacity.desc()).all()
-            room_ids = [r.id for r in all_rooms]
-            
-            result = allocate_and_seat_global(
-                exam_id=exam.id,
-                session=target_session,
-                branch_list_str=global_branches_str,
-                room_ids=room_ids
-            )
-            return jsonify(result)
-
+        total_allocated = 0
+        if str(data['room_id']).lower() == 'all':
+            target_rooms = Room.query.order_by(Room.capacity.desc()).all()
         else:
             target_rooms = [Room.query.get(int(data['room_id']))]
-            if not target_rooms or not target_rooms[0]: 
-                return jsonify({"success": False, "error": "Room not found."})
 
-            global_seated_ids = set()
-            total_allocated = 0
+        if not target_rooms: return jsonify({"success": False, "error": "No rooms found."})
+
+        # --- Allocation Loop ---
+        global_seated_ids = set()
+
+        for room in target_rooms:
+            # Filter pool: Remove students already seated in previous loop iterations
+            current_pool = [s for s in all_students_pool if s.id not in global_seated_ids]
+            if not current_pool: break 
+
+            grouped_data = {}
+            for s in current_pool:
+                if s.branch not in grouped_data: grouped_data[s.branch] = []
+                grouped_data[s.branch].append(s)
             
-            for room in target_rooms:
-                room_id_str = str(room.id)
+            result = generate_multi_branch_seating(exam.id, room.id, list(grouped_data.values()))
+            
+            if "allocated" in result and result["allocated"] > 0:
+                total_allocated += result["allocated"]
                 
-                if room_id_str in room_branch_map and room_branch_map[room_id_str].strip():
-                    current_room_branches = room_branch_map[room_id_str]
-                else:
-                    current_room_branches = global_branches_str
+                # Force DB Refresh
+                db.session.commit()
+                db.session.expire_all()
                 
-                potential_students = get_students_for_branches(current_room_branches)
-                unseated_pool = [s for s in potential_students if s.id not in global_seated_ids]
-                
-                if not unseated_pool: continue 
+                just_seated = SeatAssignment.query.filter_by(exam_id=exam.id, room_id=room.id).all()
+                for seat in just_seated:
+                    global_seated_ids.add(seat.student_id)
+            else:
+                print(f"Room {room.name}: Full or Error - {result.get('error')}")
 
-                available_branches_map = {}
-                for s in unseated_pool:
-                    if s.branch not in available_branches_map: available_branches_map[s.branch] = []
-                    available_branches_map[s.branch].append(s)
-                
-                available_branch_names = list(available_branches_map.keys())
-                selected_branch_names = available_branch_names[:max_branches_per_room]
-                
-                grouped_data = [] 
-                for b_name in selected_branch_names:
-                    grouped_data.append(available_branches_map[b_name])
-
-                result = generate_multi_branch_seating(exam.id, room.id, grouped_data)
-                
-                if "allocated" in result and result["allocated"] > 0:
-                    total_allocated += result["allocated"]
-                    db.session.commit() 
-                    
-                    just_seated = SeatAssignment.query.filter_by(exam_id=exam.id, room_id=room.id).all()
-                    for seat in just_seated:
-                        global_seated_ids.add(seat.student_id)
-                else:
-                    print(f"Room {room.name}: Full or Error - {result.get('error')}")
-
-            return jsonify({
-                "success": True, 
-                "allocated": total_allocated, 
-                "message": f"Allocated {total_allocated} students in Room {target_rooms[0].name}."
-            })
+        return jsonify({
+            "success": True, 
+            "allocated": total_allocated, 
+            "message": f"Allocated {total_allocated} students. {len(all_students_pool) - len(global_seated_ids)} remaining."
+        })
 
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "error": str(e)})
-    
+
 @api_bp.route('/admin/get-exams-in-room/<int:room_id>', methods=['GET'])
 def get_exams_in_room(room_id):
     if room_id == 0:
@@ -436,131 +314,77 @@ def get_exams_in_room(room_id):
         exam = Exam.query.get(eid)
         if exam:
             sample = SeatAssignment.query.filter_by(exam_id=eid).first()
-            batch = "Unknown"
-            course = "B.Tech" 
-
-            if sample and sample.student:
-                batch = sample.student.session
-                if sample.student.course:
-                    course = sample.student.course
-
-            label = f"[{course}] {exam.name} ({exam.date} | {exam.time_slot}) - Batch: {batch}"
-            exams_data.append({'id': exam.id, 'name': label})
-            
+            batch = sample.student.session if (sample and sample.student) else "Unknown"
+            exams_data.append({'id': exam.id, 'name': f"{exam.name} ({exam.date} | {exam.time_slot}) - Batch: {batch}"})
     return jsonify(exams_data)
-
-@api_bp.route('/admin/get-all-active-exams', methods=['GET'])
-def get_all_active_exams_alias():
-    return get_exams_in_room(0)
 
 @api_bp.route('/admin/get-seating-chart/<int:room_id>', methods=['GET'])
 def get_seating_chart(room_id):
     exam_id = request.args.get('exam_id')
-    course_filter = request.args.get('course', 'B.Tech') 
     
-    if not exam_id:
-        return jsonify({"error": "Exam ID is required"}), 400
-
     def get_room_data(tid):
         room = Room.query.get(tid)
         if not room: return None
-        
-        query = db.session.query(SeatAssignment).join(Student).filter(
-            SeatAssignment.room_id == tid,
-            SeatAssignment.exam_id == exam_id
-        )
-
-        if course_filter == 'B.Tech':
-            query = query.filter(
-                (Student.course == 'B.Tech') | 
-                (Student.course == None) | 
-                (Student.course == "")
-            )
-        else:
-            query = query.filter(Student.course == course_filter)
-            
-        assigns = query.all()
-
+        assigns = SeatAssignment.query.filter_by(room_id=tid, exam_id=exam_id).all()
         seats = []
         for s in assigns:
             if s.student:
-                r_val = int(s.row_num)
-                c_val = int(s.col_num)
-                
-                if r_val == 0: r_val = 1
-                if c_val == 0: c_val = 1
-
-                normalized_label = f"R{r_val}-C{c_val}"
-
                 seats.append({
-                    'row': r_val, 
-                    'col': c_val, 
-                    'label': normalized_label, 
-                    'original_label': s.seat_label, 
-                    'student_name': s.student.name, 
-                    'branch': s.student.branch,
-                    'roll': s.student.roll_number, 
-                    'reg_no': s.student.registration_number,
-                    'session': s.student.session 
+                    'row': s.row_num, 'col': s.col_num, 'label': s.seat_label,
+                    'student_name': s.student.name, 'branch': s.student.branch,
+                    'roll': s.student.roll_number, 'session': s.student.session,
+                    # --- ADDED REG NO FOR VISUAL TOGGLE ---
+                    'reg_no': s.student.registration_number
                 })
-        
-        return {
-            "room_name": f"{room.building} - {room.name}", 
-            "capacity": room.capacity,
-            "rows": room.total_rows, 
-            "cols": room.total_columns, 
-            "seats": seats
-        }
+        return {"room_name": f"{room.building} - {room.name}", "rows": room.total_rows, "cols": room.total_columns, "seats": seats}
 
     if room_id == 0:
-        active_query = db.session.query(SeatAssignment.room_id).join(Student).filter(SeatAssignment.exam_id == exam_id)
-        
-        if course_filter == 'B.Tech':
-            active_query = active_query.filter((Student.course == 'B.Tech') | (Student.course == None) | (Student.course == ""))
-        else:
-            active_query = active_query.filter(Student.course == course_filter)
-            
-        active_rooms = active_query.distinct().all()
-        
-        rooms_data = []
-        for r in active_rooms:
-            r_data = get_room_data(r[0])
-            if r_data: 
-                rooms_data.append(r_data)
-                
-        return jsonify({"mode": "multi", "rooms": rooms_data})
+        active = db.session.query(SeatAssignment.room_id).filter_by(exam_id=exam_id).distinct().all()
+        return jsonify({"mode": "multi", "rooms": [get_room_data(r[0]) for r in active if get_room_data(r[0])]})
     else:
-        data = get_room_data(room_id)
-        return jsonify(data or {"error": "Room not found"})
+        return jsonify(get_room_data(room_id) or {"error": "Not found"})
 
 # ==========================================
 # 5. RESET FUNCTIONS
 # ==========================================
 
+# Option A: Reset only Seating (Operational)
 @api_bp.route('/admin/reset-seating', methods=['POST'])
 def reset_seating():
     try:
+        # 1. Delete Seat Assignments (Child of Exam)
         num_deleted = db.session.query(SeatAssignment).delete()
+        
+        # 2. Delete Invigilations (Child of Exam)
         db.session.query(Invigilation).delete()
+        
+        # 3. Now it is safe to delete Exams (Parent)
         db.session.query(Exam).delete()
+        
         db.session.commit()
         return jsonify({"success": True, "message": f"System Reset! Cleared {num_deleted} seats and all duties."})
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "error": str(e)})
 
+# Option B: Full Database Reset
 @api_bp.route('/admin/reset-database', methods=['POST'])
 def reset_database():
     try:
+        # Delete operational data only, KEEP ADMINS
         SeatAssignment.query.delete()
         Invigilation.query.delete()
         Student.query.delete()
         Teacher.query.delete()
         Exam.query.delete()
         Room.query.delete()
+        
         db.session.commit()
+        
+        # Clear AI
         ai_engine.is_trained = False
         ai_engine.search_tokens = []
+        
         return jsonify({"message": "System Reset Successful. All operational data wiped."})
     except Exception as e:
         db.session.rollback()
@@ -582,8 +406,7 @@ def get_all_students_orm():
                 'reg_no': s.registration_number, 
                 'roll_no': s.roll_number, 
                 'branch': s.branch,
-                'session': s.session,
-                'course': s.course if s.course else 'B.Tech'
+                'session': s.session
             })
         return jsonify(student_list)
     except Exception as e:
@@ -593,19 +416,39 @@ def get_all_students_orm():
 def add_student_orm():
     try:
         data = request.json
+        name = data.get('name')
+        roll_no = data.get('roll_no')
+        branch = data.get('branch')
+        session = data.get('session')
+
+        # If reg_no is provided, use it. Otherwise, use roll_no as Temporary Reg No.
+        reg_no = data.get('registration_number')
+        if not reg_no or reg_no.strip() == "":
+            reg_no = roll_no 
+
+        # Check if Roll OR Reg No exists
+        existing = Student.query.filter(
+            (Student.roll_number == roll_no) | 
+            (Student.registration_number == reg_no)
+        ).first()
+
+        if existing:
+            return jsonify({'status': 'error', 'message': 'Student with this Roll or Reg Number already exists'}), 400
+
         new_student = Student(
-            name=data.get('name'),
-            roll_number=data.get('roll_no'),
-            registration_number=str(data.get('registration_number', '')).strip(), 
-            branch=data.get('branch'),
-            course=data.get('course', 'B.Tech'),
-            session=data.get('session'),
-            email=data.get('email', ""),
+            name=name,
+            roll_number=roll_no,
+            registration_number=reg_no, 
+            branch=branch,
+            session=session,
+            email="",
             profile_image='default.jpg'
         )
         new_student.set_password('welcome123') 
+
         db.session.add(new_student)
         db.session.commit()
+
         return jsonify({'status': 'success', 'message': 'Student added successfully'})
     except Exception as e:
         db.session.rollback()
@@ -616,6 +459,7 @@ def update_student_orm():
     try:
         data = request.json
         s_id = data.get('id')
+        
         student = Student.query.get(s_id)
         if not student:
             return jsonify({'status': 'error', 'message': 'Student not found'}), 404
@@ -625,9 +469,9 @@ def update_student_orm():
         student.roll_number = data.get('roll_no')
         student.branch = data.get('branch')
         student.session = data.get('session')
-        student.course = data.get('course') 
 
         db.session.commit()
+
         return jsonify({'status': 'success', 'message': 'Student updated'})
     except Exception as e:
         db.session.rollback()
@@ -638,12 +482,17 @@ def delete_student_orm():
     try:
         data = request.json
         s_id = data.get('id')
+
         student = Student.query.get(s_id)
         if not student:
             return jsonify({'status': 'error', 'message': 'Student not found'}), 404
+
+        # Delete any associated Seat Assignments first
         SeatAssignment.query.filter_by(student_id=s_id).delete()
+        
         db.session.delete(student)
         db.session.commit()
+
         return jsonify({'status': 'success', 'message': 'Student deleted'})
     except Exception as e:
         db.session.rollback()
@@ -701,67 +550,15 @@ def delete_duty():
 # 8. REPORTS (NOTICE BOARD / ATTENDANCE / MASTER)
 # ==========================================
 
-# --- NEW ROUTE: DISTRIBUTION STATS (POST) ---
-# This fixes the 404 error by providing the endpoint needed for the new frontend
-@api_bp.route('/admin/get-distribution-stats', methods=['POST'])
-def get_distribution_stats_post():
-    data = request.json
-    date_str = data.get('date')
-    time = data.get('time')
-    batch = data.get('batch')
-    course = data.get('course', 'B.Tech')
-
-    if not date_str or not time:
-        return jsonify({"error": "Date and Time required"}), 400
-
-    try:
-        exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        
-        # Query: Get raw count of students per Branch per Room
-        query = db.session.query(
-            Student.branch, 
-            Room.name, 
-            func.count(SeatAssignment.id)
-        ).join(SeatAssignment.exam).join(SeatAssignment.student).join(SeatAssignment.room)
-
-        # Filters
-        query = query.filter(Exam.date == exam_date)
-        query = query.filter(Exam.time_slot.ilike(f"%{time}%")) # Use ilike for case-insensitive match
-        
-        if batch:
-            query = query.filter(Student.session == batch)
-            
-        if course == 'B.Tech':
-            query = query.filter((Student.course == 'B.Tech') | (Student.course == None) | (Student.course == ""))
-        else:
-            query = query.filter(Student.course == course)
-
-        # Grouping
-        results = query.group_by(Student.branch, Room.name).all()
-        
-        # Format for frontend (List of Objects)
-        response_data = []
-        for branch, room_name, count in results:
-            response_data.append({
-                "branch": branch,
-                "room": room_name,
-                "count": count
-            })
-            
-        return jsonify(response_data)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @api_bp.route('/admin/notice-board-data', methods=['GET'])
 def get_notice_board_data():
-    date_str = request.args.get('date')
-    time = request.args.get('time')
-    batch = request.args.get('batch')
-    room_id = request.args.get('room_id')
+    date_str = request.args.get('date'); time = request.args.get('time')
+    batch = request.args.get('batch'); room_id = request.args.get('room_id')
     semester = request.args.get('semester', '')
-    course_filter = request.args.get('course', 'B.Tech')
     
+    # --- UPDATE: GET ID TYPE PREFERENCE ---
+    id_type = request.args.get('id_type', 'roll') # Default to roll if not provided
+
     if not date_str or not time: return jsonify({"error": "Date/Time required"}), 400
 
     try:
@@ -770,13 +567,9 @@ def get_notice_board_data():
 
         if batch: query = query.filter(Student.session == batch.strip())
         if room_id: query = query.filter(SeatAssignment.room_id == int(room_id))
-            
-        if course_filter == 'B.Tech':
-            query = query.filter((Student.course == 'B.Tech') | (Student.course == None) | (Student.course == ""))
-        else:
-            query = query.filter(Student.course == course_filter)
         
-        assignments = query.join(Room).order_by(Room.building, Room.name, Room.id, SeatAssignment.row_num, SeatAssignment.col_num).all()
+        # Initial sort by room building/name
+        assignments = query.join(Room).order_by(Room.building, Room.name, Room.id, Student.branch).all()
 
         if not assignments: return jsonify({"error": "No data found."}), 404
 
@@ -785,117 +578,56 @@ def get_notice_board_data():
             seats_list = list(r_seats)
             room_entry = {"hall_no": f"{room.building} - {room.name}", "branches": [], "room_total": len(seats_list)}
 
+            # Group by branch
+            seats_list.sort(key=lambda x: x.student.branch)
             for branch, b_seats in groupby(seats_list, key=lambda x: x.student.branch):
                 students = [s.student for s in b_seats]
-                students.sort(key=lambda s: str(s.registration_number if s.registration_number else s.roll_number))
-
-                first_s = students[0]
-                last_s = students[-1]
-                start_reg = first_s.registration_number if first_s.registration_number else first_s.roll_number
-                end_reg = last_s.registration_number if last_s.registration_number else last_s.roll_number
                 
+                # --- UPDATE: SORT & CALCULATE RANGE BASED ON ID TYPE ---
+                if id_type == 'reg':
+                    # Sort by Registration Number (Handle None values safely)
+                    students.sort(key=lambda s: s.registration_number if s.registration_number else "ZZZZ")
+                    
+                    start_val = students[0].registration_number if students[0].registration_number else "N/A"
+                    end_val = students[-1].registration_number if students[-1].registration_number else "N/A"
+                    range_str = f"{start_val} To {end_val}"
+                else:
+                    # Sort by Roll Number (Default)
+                    students.sort(key=lambda s: s.roll_number)
+                    
+                    start_val = students[0].roll_number
+                    end_val = students[-1].roll_number
+                    range_str = f"{start_val} To {end_val}"
+
                 room_entry["branches"].append({
                     "name": branch,
-                    "range": f"{start_reg} To {end_reg}",
+                    "range": range_str,
                     "count": len(students)
                 })
             report_data.append(room_entry)
 
-        exam_title = assignments[0].exam.name
         return jsonify({
             "status": "success",
             "exam_info": { 
                 "date": exam_date.strftime('%d-%m-%Y'), 
                 "time": time, 
-                "title": f"[{course_filter}] {exam_title}", 
+                "title": assignments[0].exam.name, 
                 "batch": batch or "All",
                 "semester": semester
             },
             "data": report_data
         })
     except Exception as e: return jsonify({"error": str(e)}), 500
-
-@api_bp.route('/admin/attendance-sheet-data', methods=['GET'])
-def get_attendance_sheet_data():
-    date_str = request.args.get('date')
-    time_input = request.args.get('time')
-    room_id = request.args.get('room_id')
-    course_filter = request.args.get('course', 'B.Tech')
-    batch_filter = request.args.get('batch', '').strip()
-    semester_label = request.args.get('semester', '')
     
-    if not date_str or not time_input or not room_id:
-        return jsonify({"error": "Date, Time, and Room required"}), 400
 
-    try:
-        exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        query = db.session.query(SeatAssignment).join(Exam).filter(Exam.date == exam_date).join(Student).join(Room)
 
-        if course_filter == 'B.Tech':
-            query = query.filter((Student.course == 'B.Tech') | (Student.course == None) | (Student.course == ""))
-        else:
-            query = query.filter(Student.course == course_filter)
-
-        if batch_filter:
-            query = query.filter(Student.session == batch_filter)
-
-        all_assignments_that_day = query.order_by(Room.name, SeatAssignment.row_num, SeatAssignment.col_num).all()
-
-        if not all_assignments_that_day:
-            return jsonify({"error": f"No students found."}), 404
-
-        def clean(s): return "".join(x for x in str(s).lower() if x.isalnum())
-        target_time = clean(time_input)
-        target_room = str(room_id).lower()
-
-        assignments = []
-        for seat in all_assignments_that_day:
-            if target_room != 'all' and str(seat.room_id) != target_room: continue
-            db_time = clean(seat.exam.time_slot)
-            if target_time in db_time or db_time in target_time:
-                assignments.append(seat)
-
-        if not assignments: return jsonify({"error": "Time mismatch!"}), 404
-
-        sheets = []
-        for room_obj, room_seats in groupby(assignments, key=lambda x: x.room):
-            room_seats_list = list(room_seats)
-            for branch, branch_seats in groupby(room_seats_list, key=lambda x: x.student.branch):
-                students = []
-                seats = list(branch_seats)
-                seats.sort(key=lambda s: (s.row_num, s.col_num))
-
-                exam_name = seats[0].exam.name
-                for i, seat in enumerate(seats):
-                    display_id = seat.student.registration_number if seat.student.registration_number else seat.student.roll_number
-                    students.append({
-                        "sl": i + 1,
-                        "reg_no": display_id,
-                        "roll_no": seat.student.roll_number,
-                        "name": seat.student.name
-                    })
-                
-                final_sem_label = semester_label if semester_label else "As per Record"
-                sheets.append({
-                    "branch": branch,
-                    "hall_no": f"{room_obj.building} - {room_obj.name}",
-                    "exam_name": exam_name,
-                    "semester": final_sem_label,
-                    "course": course_filter,
-                    "students": students
-                })
-
-        return jsonify({"status": "success", "sheets": sheets})
-
-    except Exception as e: return jsonify({"error": str(e)}), 500
+# --- REPLACE existing 'get_attendance_sheet_data' with this IMPROVED version --
 
 @api_bp.route('/admin/question-distribution', methods=['GET'])
 def get_question_distribution():
     date_str = request.args.get('date')
     time = request.args.get('time')
-    course_filter = request.args.get('course', 'B.Tech')
-    batch_filter = request.args.get('batch', '').strip()
-    
+
     if not date_str or not time:
         return jsonify({"error": "Date and Time are required"}), 400
 
@@ -906,22 +638,16 @@ def get_question_distribution():
                  .filter(Exam.date == exam_date)
                  .filter(Exam.time_slot.ilike(f"%{time.strip()}%"))
                  .join(Student)
-                 .join(Room))
-
-        if course_filter == 'B.Tech':
-            query = query.filter((Student.course == 'B.Tech') | (Student.course == None) | (Student.course == ""))
-        else:
-            query = query.filter(Student.course == course_filter)
-            
-        if batch_filter:
-            query = query.filter(Student.session == batch_filter)
+                 .join(Room)
+                 .order_by(Student.branch, Room.name))
         
-        assignments = query.order_by(Student.branch, Room.name).all()
+        assignments = query.all()
 
         if not assignments:
-            return jsonify({"error": f"No seating found for {course_filter} ({batch_filter or 'All'}) on this date/time."}), 404
+            return jsonify({"error": "No seating found for this date/time."}), 404
 
         distribution_data = []
+        
         for branch, branch_seats in groupby(assignments, key=lambda x: x.student.branch):
             branch_seats_list = list(branch_seats)
             room_breakdown = []
@@ -942,7 +668,7 @@ def get_question_distribution():
             })
 
         exam_info = {
-            "name": f"[{course_filter}] {assignments[0].exam.name}",
+            "name": assignments[0].exam.name,
             "date": exam_date.strftime('%d-%m-%Y'),
             "time": assignments[0].exam.time_slot
         }
@@ -960,43 +686,42 @@ def get_question_distribution():
 def get_master_chart():
     date_str = request.args.get('date')
     time = request.args.get('time')
-    course_filter = request.args.get('course', 'B.Tech')
-    batch_filter = request.args.get('batch', '').strip()
-    semester = request.args.get('semester', '')
     
     if not date_str or not time:
         return jsonify({"error": "Date and Time are required"}), 400
     
     try:
         exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        query = (db.session.query(SeatAssignment)
-                 .join(Exam).filter(Exam.date == exam_date, Exam.time_slot.ilike(f"%{time.strip()}%"))
-                 .join(Room).join(Student))
-
-        if course_filter == 'B.Tech':
-            query = query.filter((Student.course == 'B.Tech') | (Student.course == None) | (Student.course == ""))
-        else:
-            query = query.filter(Student.course == course_filter)
-
-        if batch_filter:
-            query = query.filter(Student.session == batch_filter)
-
-        assignments = query.order_by(Room.building, Room.name, Student.branch).all()
+        
+        assignments = (db.session.query(SeatAssignment)
+                       .join(Exam).filter(Exam.date == exam_date, Exam.time_slot.ilike(f"%{time.strip()}%"))
+                       .join(Room).join(Student)
+                       .order_by(Room.building, Room.name, Student.branch)
+                       .all())
                           
         if not assignments:
-            return jsonify({"error": f"No seating found for {course_filter} ({batch_filter or 'All'}) on this date/time."}), 404
+            return jsonify({"error": "No seating found for this date/time."}), 404
             
         master_data = []
         grand_total = 0
         
         for room, r_seats in groupby(assignments, key=lambda x: x.room):
             r_seats_list = list(r_seats)
-            room_entry = {"hall_no": f"{room.building} - {room.name}", "branches": []}
+            room_entry = {
+                "hall_no": f"{room.building} - {room.name}", 
+                "branches": []
+            }
+            
             r_seats_list.sort(key=lambda x: x.student.branch)
+            
             for branch, b_seats in groupby(r_seats_list, key=lambda x: x.student.branch):
                 count = len(list(b_seats))
-                room_entry["branches"].append({"name": branch, "count": count})
+                room_entry["branches"].append({
+                    "name": branch,
+                    "count": count
+                })
                 grand_total += count
+            
             master_data.append(room_entry)
             
         date_headers = []
@@ -1004,13 +729,9 @@ def get_master_chart():
             d = exam_date + timedelta(days=i)
             date_headers.append(d.strftime('%d.%m.%y'))
 
-        title_prefix = f"[{course_filter}]"
-        if semester: title_prefix += f" {semester}"
-        exam_title = f"{title_prefix} {assignments[0].exam.name}"
-
         return jsonify({
             "status": "success",
-            "exam_title": exam_title,
+            "exam_title": assignments[0].exam.name,
             "timing": time,
             "date_headers": date_headers,
             "data": master_data,
@@ -1019,3 +740,105 @@ def get_master_chart():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# --- ADD THIS NEW ROUTE ---
+@api_bp.route('/admin/get-exam-times', methods=['GET'])
+def get_exam_times():
+    try:
+        # 1. Get the date string (YYYY-MM-DD) from the frontend
+        date_str = request.args.get('date')
+        
+        if not date_str:
+            return jsonify([]), 400
+
+        # 2. Convert string to Python Date object (Required because your model uses db.Date)
+        try:
+            search_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Invalid date format'}), 400
+
+        # 3. Query the 'Exam' table defined in your models.py
+        # We look for all exams happening on that specific date
+        exams = Exam.query.filter_by(date=search_date).all()
+        
+        # 4. Extract unique time slots
+        # We use set() to remove duplicates (e.g., if two exams are at 10:00 AM, we only want "10:00 AM" once)
+        unique_times = list(set([exam.time_slot for exam in exams]))
+        
+        # 5. Send back as JSON
+        return jsonify(unique_times)
+
+    except Exception as e:
+        print(f"Error fetching times: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# --- PASTE THIS NEW FUNCTION AT THE BOTTOM ---
+
+@api_bp.route('/admin/attendance-sheet-data', methods=['GET'])
+def attendance_sheet_data():
+    try:
+        # 1. Get parameters
+        date_str = request.args.get('date')
+        time_slot = request.args.get('time')
+        room_id = request.args.get('room_id')
+
+        if not date_str or not time_slot:
+            return jsonify({'error': 'Date and Time are required'}), 400
+
+        search_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        # 2. Query Data
+        query = db.session.query(SeatAssignment).join(Exam).join(Student).join(Room).filter(
+            Exam.date == search_date,
+            Exam.time_slot.ilike(f"%{time_slot.strip()}%")
+        )
+
+        if room_id and room_id != 'all':
+            query = query.filter(Room.id == int(room_id))
+
+        # Initial Sort: Group by Room and Branch so we can build the dictionaries easily
+        assignments = query.order_by(Room.name, Student.branch, Student.registration_number).all()
+
+        if not assignments:
+            return jsonify({'sheets': []})
+
+        # 3. Group Data
+        sheets_data = {}
+        
+        for seat in assignments:
+            r_name = seat.room.name
+            b_name = seat.student.branch
+            
+            # Unique key ensures separate sheets for different branches in the same room
+            unique_key = f"{r_name}_{b_name}"
+            
+            if unique_key not in sheets_data:
+                sheets_data[unique_key] = {
+                    'hall_no': r_name,
+                    'exam_name': seat.exam.name,
+                    'semester': seat.student.session, 
+                    'branch': b_name,
+                    'students': []
+                }
+            
+            sheets_data[unique_key]['students'].append({
+                'sl': len(sheets_data[unique_key]['students']) + 1,
+                'reg_no': seat.student.registration_number, 
+                'name': seat.student.name
+            })
+
+        # 4. FINAL SORTING (The Fix)
+        # Convert the dictionary values to a list
+        final_sheets = list(sheets_data.values())
+
+        # Sort the list of sheets so that:
+        # 1. Branches are grouped together (e.g., all CSE sheets first)
+        # 2. Inside a branch, sheets are ordered by the Registration Number of the first student
+        final_sheets.sort(key=lambda x: (x['branch'], x['students'][0]['reg_no']))
+
+        return jsonify({'sheets': final_sheets})
+
+    except Exception as e:
+        print(f"Error generating attendance: {e}")
+        return jsonify({'error': str(e)}), 500

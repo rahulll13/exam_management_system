@@ -3,7 +3,7 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
 
-# --- UPDATED STUDENT MODEL (With Course Field) ---
+# --- STUDENT MODEL (Updated with Password) ---
 class Student(UserMixin, db.Model):
     __tablename__ = 'students'
 
@@ -12,15 +12,12 @@ class Student(UserMixin, db.Model):
     registration_number = db.Column(db.String(50), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    
-    # NEW: Course Field to distinguish B.Tech / M.Tech
-    course = db.Column(db.String(20), nullable=False, default='B.Tech') 
-    
     branch = db.Column(db.String(50), nullable=False)
     session = db.Column(db.String(20), nullable=False)
     profile_image = db.Column(db.String(200), nullable=False, default='default.jpg')
     
-    password_hash = db.Column(db.String(255), nullable=False)
+    # NEW: Password Field
+    password_hash = db.Column(db.String(255), nullable=False) # Changed size for hash
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
