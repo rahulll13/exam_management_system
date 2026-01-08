@@ -148,12 +148,25 @@ def update_room():
 def get_student_stats():
     data = request.json
     query = db.session.query(Student.branch, func.count(Student.id))
-    if data.get('session'): query = query.filter(Student.session.like(f"%{data['session']}%"))
-    if data.get('branches'): 
-        branch_list = [b.strip() for b in data['branches'].split(',')]
+
+    # 1. Filter by Session/Batch
+    if data.get('session'):
+        query = query.filter(Student.session.like(f"%{data['session']}%"))
+
+    # 2. Filter by Branch (Handle 'ALL' case)
+    branches_input = data.get('branches', '').strip()
+    
+    # Only apply filter if input is NOT empty and NOT 'ALL'
+    if branches_input and branches_input.upper() != 'ALL':
+        branch_list = [b.strip() for b in branches_input.split(',')]
         query = query.filter(Student.branch.in_(branch_list))
+
     results = query.group_by(Student.branch).all()
-    return jsonify({"matching_students": sum(c for _, c in results), "branch_breakdown": {b: c for b, c in results}})
+    
+    return jsonify({
+        "matching_students": sum(c for _, c in results), 
+        "branch_breakdown": {b: c for b, c in results}
+    })
 
 @api_bp.route('/admin/bulk-upload', methods=['POST'])
 def bulk_upload_students():
@@ -215,6 +228,7 @@ def bulk_upload_students():
 def run_seating_algo():
     data = request.json
     
+    # ... (Keep existing code for fetching branch_names, target_session, and all_students_pool) ...
     if data['branches'].strip().upper() == 'ALL':
         unique_branches = db.session.query(Student.branch).distinct().all()
         branch_names = [b[0] for b in unique_branches] 
@@ -239,13 +253,12 @@ def run_seating_algo():
     all_students_pool.sort(key=lambda s: (s.branch, s.roll_number))
 
     try:
+        # ... (Keep existing Exam creation/lookup logic) ...
         exam_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-        
         raw_name = data['exam_name']
         sem = data.get('semester', '')
         final_exam_name = f"{raw_name} - {sem}" if sem else raw_name
         
-        # Check if exam exists strictly
         exam = Exam.query.filter_by(name=final_exam_name, date=exam_date, time_slot=data['time']).first()
         if not exam:
             exam = Exam(name=final_exam_name, subject_code="MIXED", date=exam_date, time_slot=data['time'])
@@ -262,11 +275,15 @@ def run_seating_algo():
 
         if not target_rooms: return jsonify({"success": False, "error": "No rooms found."})
 
-        # --- Allocation Loop ---
+        # --- NEW LOGIC STARTS HERE ---
+        
+        # 1. Get the limit (0 means no limit)
+        max_branches = int(data.get('max_branches', 0))
+
         global_seated_ids = set()
 
         for room in target_rooms:
-            # Filter pool: Remove students already seated in previous loop iterations
+            # Filter pool: Remove students already seated
             current_pool = [s for s in all_students_pool if s.id not in global_seated_ids]
             if not current_pool: break 
 
@@ -275,15 +292,41 @@ def run_seating_algo():
                 if s.branch not in grouped_data: grouped_data[s.branch] = []
                 grouped_data[s.branch].append(s)
             
-            result = generate_multi_branch_seating(exam.id, room.id, list(grouped_data.values()))
+            # 2. APPLY THE LIMIT PER ROOM
+            active_branches = list(grouped_data.keys())
+            
+            # If a limit is set, take only the first N branches available
+            if max_branches > 0 and len(active_branches) > max_branches:
+                selected_branches = active_branches[:max_branches]
+                
+                # Re-filter the pool for this room ONLY to these branches
+                room_specific_pool = []
+                for b in selected_branches:
+                    room_specific_pool.extend(grouped_data[b])
+                
+                # Pass only the limited pool to the allocation function
+                students_to_seat = room_specific_pool
+            else:
+                # No limit or branches are within limit -> use everyone available
+                students_to_seat = current_pool
+
+            # 3. Pass 'students_to_seat' instead of 'grouped_data.values()' directly
+            # We need to regroup them for the function call
+            final_groups = {}
+            for s in students_to_seat:
+                if s.branch not in final_groups: final_groups[s.branch] = []
+                final_groups[s.branch].append(s)
+
+            result = generate_multi_branch_seating(exam.id, room.id, list(final_groups.values()))
             
             if "allocated" in result and result["allocated"] > 0:
                 total_allocated += result["allocated"]
                 
-                # Force DB Refresh
                 db.session.commit()
-                db.session.expire_all()
+                # Important: Don't expire all here to keep local objects valid if possible, 
+                # but expire_all is safer for data consistency.
                 
+                # Fetch IDs of students just seated to exclude them from next room
                 just_seated = SeatAssignment.query.filter_by(exam_id=exam.id, room_id=room.id).all()
                 for seat in just_seated:
                     global_seated_ids.add(seat.student_id)
@@ -552,27 +595,55 @@ def delete_duty():
 
 @api_bp.route('/admin/notice-board-data', methods=['GET'])
 def get_notice_board_data():
-    date_str = request.args.get('date'); time = request.args.get('time')
-    batch = request.args.get('batch'); room_id = request.args.get('room_id')
+    # Gather inputs
+    exam_id = request.args.get('exam_id')
+    date_str = request.args.get('date')
+    time = request.args.get('time')
+    batch = request.args.get('batch')
+    room_id = request.args.get('room_id')
     semester = request.args.get('semester', '')
-    
-    # --- UPDATE: GET ID TYPE PREFERENCE ---
-    id_type = request.args.get('id_type', 'roll') # Default to roll if not provided
-
-    if not date_str or not time: return jsonify({"error": "Date/Time required"}), 400
+    id_type = request.args.get('id_type', 'roll')
 
     try:
-        exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        query = db.session.query(SeatAssignment).join(Exam).filter(Exam.date == exam_date, Exam.time_slot == time).join(Student)
+        query = db.session.query(SeatAssignment).join(Exam).join(Student).join(Room)
 
-        if batch: query = query.filter(Student.session == batch.strip())
-        if room_id: query = query.filter(SeatAssignment.room_id == int(room_id))
+        # LOGIC CHANGE: Prefer specific Exam ID if provided
+        if exam_id:
+            query = query.filter(Exam.id == int(exam_id))
+            # Fetch exam details for the header
+            exam_obj = Exam.query.get(int(exam_id))
+            exam_title = exam_obj.name
+            exam_date = exam_obj.date
+            exam_time = exam_obj.time_slot
+            
+            # Try to infer batch from the first student if not provided
+            if not batch:
+                sample_student = query.first()
+                if sample_student:
+                    # --- FIX IS HERE: Use .student (lowercase) ---
+                    batch = sample_student.student.session
+        else:
+            # Fallback to old Date/Time logic
+            if not date_str or not time: 
+                return jsonify({"error": "Date/Time required"}), 400
+            
+            exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            exam_time = time
+            exam_title = "Semester Examination" # Generic fallback
+            
+            query = query.filter(Exam.date == exam_date, Exam.time_slot == time)
+            if batch: query = query.filter(Student.session == batch.strip())
+
+        # Common Filters
+        if room_id and room_id != 'all': 
+            query = query.filter(SeatAssignment.room_id == int(room_id))
         
-        # Initial sort by room building/name
-        assignments = query.join(Room).order_by(Room.building, Room.name, Room.id, Student.branch).all()
+        # Sort by Room then Branch
+        assignments = query.order_by(Room.building, Room.name, Room.id, Student.branch).all()
 
         if not assignments: return jsonify({"error": "No data found."}), 404
 
+        # --- DATA PROCESSING (Grouping) ---
         report_data = []
         for room, r_seats in groupby(assignments, key=lambda x: x.room):
             seats_list = list(r_seats)
@@ -583,25 +654,19 @@ def get_notice_board_data():
             for branch, b_seats in groupby(seats_list, key=lambda x: x.student.branch):
                 students = [s.student for s in b_seats]
                 
-                # --- UPDATE: SORT & CALCULATE RANGE BASED ON ID TYPE ---
+                # Sort & Range Calculation
                 if id_type == 'reg':
-                    # Sort by Registration Number (Handle None values safely)
                     students.sort(key=lambda s: s.registration_number if s.registration_number else "ZZZZ")
-                    
-                    start_val = students[0].registration_number if students[0].registration_number else "N/A"
-                    end_val = students[-1].registration_number if students[-1].registration_number else "N/A"
-                    range_str = f"{start_val} To {end_val}"
+                    start_val = students[0].registration_number or "N/A"
+                    end_val = students[-1].registration_number or "N/A"
                 else:
-                    # Sort by Roll Number (Default)
                     students.sort(key=lambda s: s.roll_number)
-                    
                     start_val = students[0].roll_number
                     end_val = students[-1].roll_number
-                    range_str = f"{start_val} To {end_val}"
 
                 room_entry["branches"].append({
                     "name": branch,
-                    "range": range_str,
+                    "range": f"{start_val} To {end_val}",
                     "count": len(students)
                 })
             report_data.append(room_entry)
@@ -610,44 +675,57 @@ def get_notice_board_data():
             "status": "success",
             "exam_info": { 
                 "date": exam_date.strftime('%d-%m-%Y'), 
-                "time": time, 
-                "title": assignments[0].exam.name, 
+                "time": exam_time, 
+                "title": exam_title, 
                 "batch": batch or "All",
                 "semester": semester
             },
             "data": report_data
         })
-    except Exception as e: return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        print("Error in notice board:", str(e)) # Print error to terminal for debugging
+        return jsonify({"error": str(e)}), 500
     
-
-
 # --- REPLACE existing 'get_attendance_sheet_data' with this IMPROVED version --
 
 @api_bp.route('/admin/question-distribution', methods=['GET'])
 def get_question_distribution():
+    exam_id = request.args.get('exam_id')  # <--- NEW
     date_str = request.args.get('date')
     time = request.args.get('time')
 
-    if not date_str or not time:
-        return jsonify({"error": "Date and Time are required"}), 400
+    # Validation: Need either ID or Date+Time
+    if not exam_id and (not date_str or not time):
+        return jsonify({"error": "Exam Selection required"}), 400
 
     try:
-        exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         query = (db.session.query(SeatAssignment)
                  .join(Exam)
-                 .filter(Exam.date == exam_date)
-                 .filter(Exam.time_slot.ilike(f"%{time.strip()}%"))
                  .join(Student)
-                 .join(Room)
-                 .order_by(Student.branch, Room.name))
-        
-        assignments = query.all()
+                 .join(Room))
+
+        # LOGIC CHANGE: Prefer Exam ID
+        if exam_id:
+            query = query.filter(Exam.id == int(exam_id))
+            # Fetch exam details for header
+            exam_obj = Exam.query.get(int(exam_id))
+            exam_name = exam_obj.name
+            exam_date = exam_obj.date
+            exam_time = exam_obj.time_slot
+        else:
+            # Fallback
+            exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            query = query.filter(Exam.date == exam_date, Exam.time_slot.ilike(f"%{time.strip()}%"))
+            exam_name = "Semester Examination" # Generic
+            exam_time = time
+
+        assignments = query.order_by(Student.branch, Room.name).all()
 
         if not assignments:
-            return jsonify({"error": "No seating found for this date/time."}), 404
+            return jsonify({"error": "No seating found."}), 404
 
+        # ... (Keep existing grouping logic) ...
         distribution_data = []
-        
         for branch, branch_seats in groupby(assignments, key=lambda x: x.student.branch):
             branch_seats_list = list(branch_seats)
             room_breakdown = []
@@ -659,23 +737,19 @@ def get_question_distribution():
                 room_breakdown.append(f"{room.name} = {count}")
                 total_students += count
             
-            breakdown_str = ", ".join(room_breakdown)
-
             distribution_data.append({
                 "branch": branch,
-                "breakdown": breakdown_str,
+                "breakdown": ", ".join(room_breakdown),
                 "total": total_students
             })
 
-        exam_info = {
-            "name": assignments[0].exam.name,
-            "date": exam_date.strftime('%d-%m-%Y'),
-            "time": assignments[0].exam.time_slot
-        }
-
         return jsonify({
             "status": "success",
-            "exam": exam_info,
+            "exam": {
+                "name": exam_name,
+                "date": exam_date.strftime('%d-%m-%Y'),
+                "time": exam_time
+            },
             "data": distribution_data
         })
 
@@ -684,44 +758,48 @@ def get_question_distribution():
 
 @api_bp.route('/admin/master-chart', methods=['GET'])
 def get_master_chart():
+    exam_id = request.args.get('exam_id')  # <--- NEW
     date_str = request.args.get('date')
     time = request.args.get('time')
     
-    if not date_str or not time:
-        return jsonify({"error": "Date and Time are required"}), 400
+    if not exam_id and (not date_str or not time):
+        return jsonify({"error": "Exam Selection required"}), 400
     
     try:
-        exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        
-        assignments = (db.session.query(SeatAssignment)
-                       .join(Exam).filter(Exam.date == exam_date, Exam.time_slot.ilike(f"%{time.strip()}%"))
-                       .join(Room).join(Student)
-                       .order_by(Room.building, Room.name, Student.branch)
-                       .all())
+        query = (db.session.query(SeatAssignment)
+                       .join(Exam)
+                       .join(Room).join(Student))
+
+        # LOGIC CHANGE: Prefer Exam ID
+        if exam_id:
+            query = query.filter(Exam.id == int(exam_id))
+            exam_obj = Exam.query.get(int(exam_id))
+            exam_title = exam_obj.name
+            exam_time = exam_obj.time_slot
+            exam_date = exam_obj.date # For date headers
+        else:
+            exam_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            query = query.filter(Exam.date == exam_date, Exam.time_slot.ilike(f"%{time.strip()}%"))
+            exam_title = "Semester Examination"
+            exam_time = time
+
+        assignments = query.order_by(Room.building, Room.name, Student.branch).all()
                           
-        if not assignments:
-            return jsonify({"error": "No seating found for this date/time."}), 404
+        if not assignments: return jsonify({"error": "No data found."}), 404
             
+        # ... (Keep existing grouping logic) ...
         master_data = []
         grand_total = 0
         
         for room, r_seats in groupby(assignments, key=lambda x: x.room):
             r_seats_list = list(r_seats)
-            room_entry = {
-                "hall_no": f"{room.building} - {room.name}", 
-                "branches": []
-            }
+            room_entry = { "hall_no": f"{room.building} - {room.name}", "branches": [] }
             
             r_seats_list.sort(key=lambda x: x.student.branch)
-            
             for branch, b_seats in groupby(r_seats_list, key=lambda x: x.student.branch):
                 count = len(list(b_seats))
-                room_entry["branches"].append({
-                    "name": branch,
-                    "count": count
-                })
+                room_entry["branches"].append({ "name": branch, "count": count })
                 grand_total += count
-            
             master_data.append(room_entry)
             
         date_headers = []
@@ -731,8 +809,8 @@ def get_master_chart():
 
         return jsonify({
             "status": "success",
-            "exam_title": assignments[0].exam.name,
-            "timing": time,
+            "exam_title": exam_title,
+            "timing": exam_time,
             "date_headers": date_headers,
             "data": master_data,
             "grand_total": grand_total
@@ -774,74 +852,6 @@ def get_exam_times():
 
 
 # --- PASTE THIS NEW FUNCTION AT THE BOTTOM ---
-
-@api_bp.route('/admin/attendance-sheet-data', methods=['GET'])
-def attendance_sheet_data():
-    try:
-        # 1. Get parameters
-        date_str = request.args.get('date')
-        time_slot = request.args.get('time')
-        room_id = request.args.get('room_id')
-
-        if not date_str or not time_slot:
-            return jsonify({'error': 'Date and Time are required'}), 400
-
-        search_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-
-        # 2. Query Data
-        query = db.session.query(SeatAssignment).join(Exam).join(Student).join(Room).filter(
-            Exam.date == search_date,
-            Exam.time_slot.ilike(f"%{time_slot.strip()}%")
-        )
-
-        if room_id and room_id != 'all':
-            query = query.filter(Room.id == int(room_id))
-
-        # Initial Sort: Group by Room and Branch so we can build the dictionaries easily
-        assignments = query.order_by(Room.name, Student.branch, Student.registration_number).all()
-
-        if not assignments:
-            return jsonify({'sheets': []})
-
-        # 3. Group Data
-        sheets_data = {}
-        
-        for seat in assignments:
-            r_name = seat.room.name
-            b_name = seat.student.branch
-            
-            # Unique key ensures separate sheets for different branches in the same room
-            unique_key = f"{r_name}_{b_name}"
-            
-            if unique_key not in sheets_data:
-                sheets_data[unique_key] = {
-                    'hall_no': r_name,
-                    'exam_name': seat.exam.name,
-                    'semester': seat.student.session, 
-                    'branch': b_name,
-                    'students': []
-                }
-            
-            sheets_data[unique_key]['students'].append({
-                'sl': len(sheets_data[unique_key]['students']) + 1,
-                'reg_no': seat.student.registration_number, 
-                'name': seat.student.name
-            })
-
-        # 4. FINAL SORTING (The Fix)
-        # Convert the dictionary values to a list
-        final_sheets = list(sheets_data.values())
-
-        # Sort the list of sheets so that:
-        # 1. Branches are grouped together (e.g., all CSE sheets first)
-        # 2. Inside a branch, sheets are ordered by the Registration Number of the first student
-        final_sheets.sort(key=lambda x: (x['branch'], x['students'][0]['reg_no']))
-
-        return jsonify({'sheets': final_sheets})
-
-    except Exception as e:
-        print(f"Error generating attendance: {e}")
-        return jsonify({'error': str(e)}), 500
     
 @api_bp.route('/admin/delete-students-by-session', methods=['POST'])
 def delete_students_by_session():
@@ -876,4 +886,133 @@ def delete_students_by_session():
 
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+    
+# --- ADD THIS NEW ROUTE TO FETCH SPECIFIC EXAMS ON A DATE ---
+@api_bp.route('/admin/get-exams-on-date', methods=['GET'])
+def get_exams_on_date():
+    try:
+        date_str = request.args.get('date')
+        if not date_str:
+            return jsonify([]), 400
+
+        search_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        exams = Exam.query.filter_by(date=search_date).all()
+        
+        exams_data = []
+        for exam in exams:
+            # Fetch a sample assignment to determine the Batch/Session
+            sample = SeatAssignment.query.filter_by(exam_id=exam.id).first()
+            batch = sample.student.session if (sample and sample.student) else "Unknown"
+            
+            # Create a label similar to the Visual Chart
+            # Format: "Time - Exam Name - Batch"
+            label = f"{exam.time_slot} | {exam.name} | Batch: {batch}"
+            
+            exams_data.append({
+                'id': exam.id, 
+                'label': label
+            })
+            
+        return jsonify(exams_data)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# --- UPDATE THE EXISTING ATTENDANCE FUNCTION ---
+@api_bp.route('/admin/attendance-sheet-data', methods=['GET'])
+def attendance_sheet_data():
+    try:
+        # 1. Get parameters
+        exam_id = request.args.get('exam_id')
+        date_str = request.args.get('date')
+        time_slot = request.args.get('time')
+        room_id = request.args.get('room_id')
+
+        # Validation: Require either specific Exam ID OR Date+Time
+        if not exam_id and (not date_str or not time_slot):
+            return jsonify({'error': 'Exam Selection required'}), 400
+
+        # 2. Build Query
+        query = db.session.query(SeatAssignment).join(Exam).join(Student).join(Room)
+
+        # Prefer Exam ID
+        if exam_id:
+            query = query.filter(Exam.id == int(exam_id))
+        else:
+            search_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            query = query.filter(
+                Exam.date == search_date,
+                Exam.time_slot.ilike(f"%{time_slot.strip()}%")
+            )
+
+        if room_id and room_id != 'all':
+            query = query.filter(Room.id == int(room_id))
+
+        # Order by Room, Branch, then Registration Number
+        assignments = query.order_by(Room.name, Student.branch, Student.registration_number).all()
+
+        if not assignments:
+            return jsonify({'sheets': []})
+
+        # 3. Group Data First (Room + Branch)
+        grouped_data = {}
+        for seat in assignments:
+            r_name = seat.room.name
+            b_name = seat.student.branch
+            # Create a unique key for Room + Branch combo
+            key = (r_name, b_name)
+            
+            if key not in grouped_data:
+                grouped_data[key] = {
+                    'hall_no': r_name,
+                    'exam_name': seat.exam.name,
+                    'semester': seat.student.session, 
+                    'branch': b_name,
+                    'students': []
+                }
+            
+            # Append student details
+            grouped_data[key]['students'].append({
+                'reg_no': seat.student.registration_number, 
+                'name': seat.student.name
+            })
+
+        # 4. Split into Pages of 15 (Max)
+        final_sheets = []
+        MAX_PER_PAGE = 12
+
+        for key, group in grouped_data.items():
+            all_students = group['students']
+            total_students = len(all_students)
+            
+            # Slice the student list into chunks of 15
+            for i in range(0, total_students, MAX_PER_PAGE):
+                chunk = all_students[i : i + MAX_PER_PAGE]
+                
+                # Create a new sheet object for this page
+                sheet_page = {
+                    'hall_no': group['hall_no'],
+                    'exam_name': group['exam_name'],
+                    'semester': group['semester'],
+                    'branch': group['branch'],
+                    'students': []
+                }
+                
+                # Add students to this page with Continuous Serial Numbers
+                for idx, student in enumerate(chunk):
+                    student_with_sl = student.copy()
+                    # Serial Number = Offset + Index + 1 (e.g., 16, 17, 18...)
+                    student_with_sl['sl'] = i + idx + 1 
+                    sheet_page['students'].append(student_with_sl)
+                
+                final_sheets.append(sheet_page)
+
+        # 5. Final Sort: Hall -> Branch -> Starting Serial Number
+        final_sheets.sort(key=lambda x: (x['hall_no'], x['branch'], x['students'][0]['sl']))
+
+        return jsonify({'sheets': final_sheets})
+
+    except Exception as e:
+        print(f"Error generating attendance: {e}")
         return jsonify({'error': str(e)}), 500

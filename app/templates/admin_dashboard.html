@@ -860,11 +860,15 @@
                         <input type="hidden" id="stud_id">
                         <div class="form-grid">
                             <div><label>Full Name</label><input type="text" id="stud_name" required></div>
-                            <div><label>Roll Number</label><input type="text" id="stud_roll" required></div>
+                            <div><label>Registration Number</label><input type="text" id="stud_reg_no" placeholder="Leave blank to use Roll No"></div>
                         </div>
                         <div class="form-grid">
+                            <div><label>Roll Number</label><input type="text" id="stud_roll" required></div>
                             <div><label>Branch</label><input type="text" id="stud_branch" placeholder="e.g. CSE, IT" required></div>
-                            <div><label>Batch/Session</label><input type="text" id="stud_session" placeholder="e.g. 2023-2027" required></div>
+                        </div>
+                        <div class="form-grid">
+                            <div><label>Batch/Session</label><input type="text" id="stud_session" placeholder="e.g. 2023-2027" required>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button type="submit" class="btn btn-primary" id="save-btn">Save Student</button>
@@ -949,6 +953,17 @@
                                 <button type="button" class="btn btn-dark" style="padding: 0 10px;" onclick="setAllBranches()" title="Select All Branches">ALL</button>
                             </div>
                         </div>
+                    </div>
+
+                    <div>
+                        <label>Max Branches Per Room</label>
+                        <select id="max_branches">
+                            <option value="0" selected>-- No Limit --</option>
+                            <option value="1">1 Branch Only</option>
+                            <option value="2">Max 2 Branches</option>
+                            <option value="3">Max 3 Branches</option>
+                            <option value="4">Max 4 Branches</option>
+                        </select>
                     </div>
 
                     <div style="background: #e0f2fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #bae6fd;">
@@ -1692,9 +1707,10 @@
             }
         }
 
+        // REPLACE existing fetchExamTimesForAttendance function
         async function fetchExamTimesForAttendance() {
             const date = document.getElementById('att_date').value;
-            const timeSelect = document.getElementById('att_time');
+            const timeSelect = document.getElementById('att_time'); // We will reuse this ID for the Exam Dropdown
 
             // Reset dropdown
             timeSelect.innerHTML = '<option value="">Loading...</option>';
@@ -1705,25 +1721,27 @@
             }
 
             try {
-                const res = await fetch(`/api/admin/get-exam-times?date=${date}`);
-                const times = await res.json();
+                // CALL NEW ENDPOINT
+                const res = await fetch(`/api/admin/get-exams-on-date?date=${date}`);
+                const exams = await res.json();
 
                 timeSelect.innerHTML = '';
 
-                if (times.length === 0) {
+                if (exams.length === 0) {
                     timeSelect.innerHTML = '<option value="">No exams found on this date</option>';
                 } else {
-                    // Populate valid times
-                    times.forEach(t => {
+                    timeSelect.innerHTML = '<option value="">-- Select Exam Session --</option>';
+                    // Populate with ID as value, and Label (Time + Batch) as text
+                    exams.forEach(ex => {
                         const opt = document.createElement('option');
-                        opt.value = t;
-                        opt.text = t;
+                        opt.value = ex.id; // This sends the specific Exam ID
+                        opt.text = ex.label; // This shows "10:00 AM | Name | Batch: 2024..."
                         timeSelect.appendChild(opt);
                     });
                 }
             } catch (err) {
                 console.error(err);
-                timeSelect.innerHTML = '<option value="">Error fetching times</option>';
+                timeSelect.innerHTML = '<option value="">Error fetching exams</option>';
             }
         }
 
@@ -1741,7 +1759,8 @@
                 date: document.getElementById('exam_date').value,
                 time: document.getElementById('exam_time').value,
                 target_session: document.getElementById('target_session').value,
-                semester: document.getElementById('gen_semester').value
+                semester: document.getElementById('gen_semester').value,
+                max_branches: document.getElementById('max_branches').value
             };
 
             try {
@@ -2196,7 +2215,7 @@
 
             try {
                 // 2. Pass 'id_type' to the API
-                const res = await fetch(`/api/admin/notice-board-data?date=${date}&time=${time}&batch=${batch}&room_id=${roomId}&semester=${semester}&id_type=${idType}`);
+                const res = await fetch(`/api/admin/notice-board-data?exam_id=${time}&date=${date}&batch=${batch}&room_id=${roomId}&semester=${semester}&id_type=${idType}`);
                 const json = await res.json();
 
                 if (json.error) return alert(json.error);
@@ -2355,7 +2374,7 @@
             try {
                 // We encode the time to handle spaces and brackets like (1st Sitting) safely
                 // ✅ ADD encodeURIComponent(time) HERE:
-                const res = await fetch(`/api/admin/attendance-sheet-data?date=${date}&time=${encodeURIComponent(time)}&room_id=${roomId}`);
+                const res = await fetch(`/api/admin/attendance-sheet-data?exam_id=${time}&room_id=${roomId}`);
                 const json = await res.json();
 
                 if (json.error) return alert(json.error);
@@ -2379,7 +2398,7 @@
                         <div style="text-align: right; font-weight: bold; margin-bottom: 10px;">Hall No. ${sheet.hall_no}</div>
                         
                         <table class="att-meta" style="width:100%; font-weight:bold; font-size:14px; margin-bottom:15px;">
-                            <tr><td>Name of Examination: ${sheet.exam_name}</td><td style="text-align:right">Semester: ${sheet.semester}</td></tr>
+                            <tr><td>Name of Examination: ${sheet.exam_name}</td><td style="text-align:right">Session: ${sheet.semester}</td></tr>
                             <tr><td>Name of Institute: B.I.T. Sindri</td><td style="text-align:right">Centre: B.I.T.</td></tr>
                             <tr><td>Course: B. Tech</td><td style="text-align:right">Branch: ${sheet.branch}</td></tr>
                         </table>
@@ -2412,120 +2431,100 @@
         }
 
         async function generateDistribution() {
-            const date = document.getElementById('dist_date').value;
-            const time = document.getElementById('dist_time').value;
+                const date = document.getElementById('dist_date').value;
+                const examId = document.getElementById('dist_time').value; // Holds Exam ID
 
-            if (!date || !time) return alert("Please select Date and Time");
+                if (!date || !examId) return alert("Please select Date and Session");
 
-            try {
-                const res = await fetch(`/api/admin/question-distribution?date=${date}&time=${time}`);
-                const json = await res.json();
+                try {
+                    // PASS exam_id parameter
+                    const res = await fetch(`/api/admin/question-distribution?exam_id=${examId}&date=${date}`);
+                    const json = await res.json();
 
-                if (json.error) return alert(json.error);
+                    if (json.error) return alert(json.error);
 
-                document.getElementById('dist-exam-name').innerText = json.exam.name;
-                document.getElementById('dist-exam-time').innerText = json.exam.time;
+                    document.getElementById('dist-exam-name').innerText = json.exam.name;
+                    document.getElementById('dist-exam-time').innerText = json.exam.time;
 
-                const tbody = document.getElementById('dist-body');
-                tbody.innerHTML = '';
+                    const tbody = document.getElementById('dist-body');
+                    tbody.innerHTML = '';
+                    let sl = 1;
 
-                let sl = 1;
-                json.data.forEach(row => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td style="text-align: center; font-weight: bold;">${sl++}</td>
-                        <td style="font-weight: bold; text-align: center;">${row.branch}</td>
-                        <td style="font-weight: bold; padding-left: 15px;">
-                            ${row.breakdown} 
-                            <span style="float: right; margin-right: 10px; background: #eee; padding: 0 5px; border: 1px solid #ccc;">
-                                Total: ${row.total}
-                            </span>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-
-                document.getElementById('distribution-preview').style.display = 'block';
-
-            } catch (e) {
-                console.error(e);
-                alert("Error generating chart.");
+                    json.data.forEach(row => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                <td style="text-align: center; font-weight: bold;">${sl++}</td>
+                <td style="font-weight: bold; text-align: center;">${row.branch}</td>
+                <td style="font-weight: bold; padding-left: 15px;">
+                    ${row.breakdown} 
+                    <span style="float: right; margin-right: 10px; background: #eee; padding: 0 5px; border: 1px solid #ccc;">
+                        Total: ${row.total}
+                    </span>
+                </td>
+            `;
+                        tbody.appendChild(tr);
+                    });
+                    document.getElementById('distribution-preview').style.display = 'block';
+                } catch (e) { console.error(e); alert("Error generating chart."); }
             }
-        }
 
-        async function generateMasterChart() {
-            const date = document.getElementById('master_date').value;
-            const time = document.getElementById('master_time').value;
+            async function generateMasterChart() {
+                    const date = document.getElementById('master_date').value;
+                    const examId = document.getElementById('master_time').value; // Holds Exam ID
 
-            if (!date || !time) return alert("Select Date and Time");
+                    if (!date || !examId) return alert("Select Date and Session");
 
-            try {
-                const res = await fetch(`/api/admin/master-chart?date=${date}&time=${time}`);
-                const json = await res.json();
+                    try {
+                        // PASS exam_id parameter
+                        const res = await fetch(`/api/admin/master-chart?exam_id=${examId}&date=${date}`);
+                        const json = await res.json();
 
-                if (json.error) return alert(json.error);
+                        if (json.error) return alert(json.error);
 
-                // Update Header Info
-                document.getElementById('master-exam-title').innerText = json.exam_title;
-                document.getElementById('master-exam-timing').innerText = json.timing;
-                document.getElementById('master-total-present').innerText = json.grand_total;
+                        document.getElementById('master-exam-title').innerText = json.exam_title;
+                        document.getElementById('master-exam-timing').innerText = json.timing;
+                        document.getElementById('master-total-present').innerText = json.grand_total;
 
-                // Build Table Headers
-                const thead = document.getElementById('master-table-head');
-                let headerHTML = `
-                    <th style="width: 15%;">Hall No.</th>
-                    <th style="width: 15%;">Branch's</th>
-                    <th style="width: 10%;">Total Student</th>
+                        const thead = document.getElementById('master-table-head');
+                        let headerHTML = `
+            <th style="width: 15%;">Hall No.</th>
+            <th style="width: 15%;">Branch's</th>
+            <th style="width: 10%;">Total Student</th>
+        `;
+                        json.date_headers.forEach(d => { headerHTML += `<th>${d}</th>`; });
+                        thead.innerHTML = headerHTML;
+
+                        const tbody = document.getElementById('master-table-body');
+                        tbody.innerHTML = '';
+                        const emptyDateCells = json.date_headers.map(() => '<td></td>').join('');
+
+                        json.data.forEach(room => {
+                            const branches = room.branches;
+                            const rows = branches.length;
+                            let firstBranch = branches[0];
+
+                            tbody.innerHTML += `
+                <tr>
+                    <td rowspan="${rows}" style="background: #fff; vertical-align: middle; font-weight: bold; font-size: 15px;">${room.hall_no}</td>
+                    <td style="font-weight: bold;">${firstBranch.name}</td>
+                    <td style="font-weight: bold;">${firstBranch.count}</td>
+                    ${emptyDateCells}
+                </tr>
+            `;
+
+                            for (let i = 1; i < branches.length; i++) {
+                                tbody.innerHTML += `
+                    <tr>
+                        <td style="font-weight: bold;">${branches[i].name}</td>
+                        <td style="font-weight: bold;">${branches[i].count}</td>
+                        ${emptyDateCells}
+                    </tr>
                 `;
-                // Add Date Columns from API
-                json.date_headers.forEach(d => {
-                    headerHTML += `<th>${d}</th>`;
-                });
-                thead.innerHTML = headerHTML;
-
-                // Build Table Body
-                const tbody = document.getElementById('master-table-body');
-                tbody.innerHTML = '';
-
-                // Create empty cells for date columns to be repeated in rows
-                const emptyDateCells = json.date_headers.map(() => '<td></td>').join('');
-
-                json.data.forEach(room => {
-                    const branches = room.branches;
-                    const rows = branches.length;
-
-                    // First Branch Row (Contains Rowspan for Hall No)
-                    let firstBranch = branches[0];
-                    let firstRowHTML = `
-                        <tr>
-                            <td rowspan="${rows}" style="background: #fff; vertical-align: middle; font-weight: bold; font-size: 15px;">${room.hall_no}</td>
-                            <td style="font-weight: bold;">${firstBranch.name}</td>
-                            <td style="font-weight: bold;">${firstBranch.count}</td>
-                            ${emptyDateCells}
-                        </tr>
-                    `;
-                    tbody.innerHTML += firstRowHTML;
-
-                    // Subsequent Branch Rows (Skip Hall No)
-                    for (let i = 1; i < branches.length; i++) {
-                        let b = branches[i];
-                        tbody.innerHTML += `
-                            <tr>
-                                <td style="font-weight: bold;">${b.name}</td>
-                                <td style="font-weight: bold;">${b.count}</td>
-                                ${emptyDateCells}
-                            </tr>
-                        `;
-                    }
-                });
-
-                document.getElementById('master-chart-preview').style.display = 'block';
-
-            } catch (e) {
-                console.error(e);
-                alert("Error generating Master Chart");
-            }
-        }
+                            }
+                        });
+                        document.getElementById('master-chart-preview').style.display = 'block';
+                    } catch (e) { console.error(e); alert("Error generating Master Chart"); }
+                }
 
         async function resetSystem() {
             if (!confirm("⚠️ SAFE RESET ⚠️\n\nAre you sure you want to WIPE EXAM DATA?\n\nThis will delete:\n- All Seating Arrangements\n- All Exam Schedules\n- All Distribution Charts\n\n(Students & Teachers remain safe)")) return;
@@ -2607,6 +2606,7 @@
                 document.getElementById('stud_id').value = "";
                 document.getElementById('stud_name').value = "";
                 document.getElementById('stud_roll').value = "";
+                document.getElementById('stud_reg_no').value = "";
                 document.getElementById('stud_branch').value = "";
                 document.getElementById('stud_session').value = "";
                 document.getElementById('save-btn').innerText = "Save Student";
@@ -2620,6 +2620,7 @@
             document.getElementById('form-title').innerText = "Edit Student Details";
             document.getElementById('stud_id').value = student.id;
             document.getElementById('stud_name').value = student.name;
+            document.getElementById('stud_reg_no').value = student.reg_no || student.roll_no;
             document.getElementById('stud_roll').value = student.roll_no;
             document.getElementById('stud_branch').value = student.branch;
             document.getElementById('stud_session').value = student.session;
@@ -2630,9 +2631,18 @@
         async function handleStudentSave(e) {
             e.preventDefault();
             const id = document.getElementById('stud_id').value;
+            // Get values
+            const rollNo = document.getElementById('stud_roll').value;
+            let regNo = document.getElementById('stud_reg_no').value;
+
+            // Fallback: If Reg No is empty, use Roll No
+            if (!regNo || regNo.trim() === "") {
+                regNo = rollNo;
+            }
             const data = {
                 name: document.getElementById('stud_name').value,
                 roll_no: document.getElementById('stud_roll').value,
+                registration_number: regNo,
                 branch: document.getElementById('stud_branch').value,
                 session: document.getElementById('stud_session').value
             };
@@ -2715,76 +2725,56 @@
                 renderStudentTable(filtered);
             }
 
-        async function fetchExamTimesForDistribution() {
-                const date = document.getElementById('dist_date').value;
-                const timeSelect = document.getElementById('dist_time');
+            async function fetchExamTimesForDistribution() {
+                    const date = document.getElementById('dist_date').value;
+                    const timeSelect = document.getElementById('dist_time');
 
-                // Reset dropdown
-                timeSelect.innerHTML = '<option value="">Loading...</option>';
-
-                if (!date) {
-                    timeSelect.innerHTML = '<option value="">-- Select Date First --</option>';
-                    return;
-                }
-
-                try {
-                    // Reuse the existing API endpoint
-                    const res = await fetch(`/api/admin/get-exam-times?date=${date}`);
-                    const times = await res.json();
-
-                    timeSelect.innerHTML = '';
-
-                    if (times.length === 0) {
-                        timeSelect.innerHTML = '<option value="">No exams found</option>';
-                    } else {
-                        // Populate valid times
-                        timeSelect.innerHTML = '<option value="">-- Select Time --</option>';
-                        times.forEach(t => {
-                            const opt = document.createElement('option');
-                            opt.value = t; // The value used for logic
-                            opt.text = t;  // The text shown to the user
-                            timeSelect.appendChild(opt);
-                        });
-                    }
-                } catch (err) {
-                    console.error(err);
-                    timeSelect.innerHTML = '<option value="">Error fetching times</option>';
-                }
-            }
-            async function fetchExamTimesForMasterChart() {
-                    const date = document.getElementById('master_date').value;
-                    const timeSelect = document.getElementById('master_time');
-
-                    // Reset dropdown
                     timeSelect.innerHTML = '<option value="">Loading...</option>';
-
-                    if (!date) {
-                        timeSelect.innerHTML = '<option value="">-- Select Date First --</option>';
-                        return;
-                    }
+                    if (!date) { timeSelect.innerHTML = '<option value="">-- Select Date First --</option>'; return; }
 
                     try {
-                        const res = await fetch(`/api/admin/get-exam-times?date=${date}`);
-                        const times = await res.json();
-
+                        const res = await fetch(`/api/admin/get-exams-on-date?date=${date}`);
+                        const exams = await res.json();
                         timeSelect.innerHTML = '';
-
-                        if (times.length === 0) {
+                        if (exams.length === 0) {
                             timeSelect.innerHTML = '<option value="">No exams found</option>';
                         } else {
-                            timeSelect.innerHTML = '<option value="">-- Select Time --</option>';
-                            times.forEach(t => {
+                            timeSelect.innerHTML = '<option value="">-- Select Session --</option>';
+                            exams.forEach(ex => {
                                 const opt = document.createElement('option');
-                                opt.value = t;
-                                opt.text = t;
+                                opt.value = ex.id;      // Exam ID
+                                opt.text = ex.label;    // Formatted Label
                                 timeSelect.appendChild(opt);
                             });
                         }
-                    } catch (err) {
-                        console.error(err);
-                        timeSelect.innerHTML = '<option value="">Error fetching times</option>';
-                    }
+                    } catch (err) { console.error(err); }
                 }
+
+                async function fetchExamTimesForMasterChart() {
+                        const date = document.getElementById('master_date').value;
+                        const timeSelect = document.getElementById('master_time');
+
+                        timeSelect.innerHTML = '<option value="">Loading...</option>';
+                        if (!date) { timeSelect.innerHTML = '<option value="">-- Select Date First --</option>'; return; }
+
+                        try {
+                            const res = await fetch(`/api/admin/get-exams-on-date?date=${date}`);
+                            const exams = await res.json();
+                            timeSelect.innerHTML = '';
+                            if (exams.length === 0) {
+                                timeSelect.innerHTML = '<option value="">No exams found</option>';
+                            } else {
+                                timeSelect.innerHTML = '<option value="">-- Select Session --</option>';
+                                exams.forEach(ex => {
+                                    const opt = document.createElement('option');
+                                    opt.value = ex.id;
+                                    opt.text = ex.label;
+                                    timeSelect.appendChild(opt);
+                                });
+                            }
+                        } catch (err) { console.error(err); }
+                    }
+
                 async function fetchExamTimesForNotice() {
                         const date = document.getElementById('notice_date').value;
                         const timeSelect = document.getElementById('notice_time');
@@ -2799,7 +2789,7 @@
 
                         try {
                             // Reuse the same API endpoint used for other charts
-                            const res = await fetch(`/api/admin/get-exam-times?date=${date}`);
+                           const res = await fetch(`/api/admin/get-exams-on-date?date=${date}`);
                             const times = await res.json();
 
                             timeSelect.innerHTML = '';
@@ -2808,10 +2798,10 @@
                                 timeSelect.innerHTML = '<option value="">No exams found</option>';
                             } else {
                                 timeSelect.innerHTML = '<option value="">-- Select Time --</option>';
-                                times.forEach(t => {
+                                times.forEach(ex => {
                                     const opt = document.createElement('option');
-                                    opt.value = t;
-                                    opt.text = t;
+                                    opt.value = ex.id;
+                                    opt.text = ex.label;
                                     timeSelect.appendChild(opt);
                                 });
                             }
