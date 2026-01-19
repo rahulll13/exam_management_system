@@ -1,22 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Find Your Seat - ExamCell</title>
-    
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
-    
+
     <style>
         /* --- BACKGROUND & FONTS --- */
+        
         body {
             font-family: 'Outfit', sans-serif;
             background: linear-gradient(-45deg, #0f172a, #1e3a8a, #3b82f6, #0f172a);
             background-size: 400% 400%;
             animation: gradientBG 15s ease infinite;
-
             min-height: 100vh;
             width: 100%;
             margin: 0;
@@ -26,11 +27,23 @@
             color: white;
             overflow-x: hidden;
         }
-        @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-
+        
+        @keyframes gradientBG {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
         /* --- GLASS CONTAINER --- */
+        
         .main-container {
-            background: rgba(15, 23, 42, 0.6); /* Darker glass for better contrast */
+            background: rgba(15, 23, 42, 0.6);
+            /* Darker glass for better contrast */
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -42,8 +55,8 @@
             margin: 20px auto;
             position: relative;
         }
-
         /* --- INPUT FIELD STYLING --- */
+        
         .search-input-group {
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.2);
@@ -51,6 +64,7 @@
             padding: 5px;
             display: flex;
         }
+        
         .search-input-group input {
             background: transparent;
             border: none;
@@ -63,6 +77,7 @@
             font-size: 16px;
         }
         /* FIX: Placeholder Contrast */
+        
         .search-input-group input::placeholder {
             color: rgba(255, 255, 255, 0.5) !important;
             opacity: 1;
@@ -78,9 +93,13 @@
             transition: 0.2s;
             white-space: nowrap;
         }
-        .search-input-group button:hover { background: #2563eb; box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
-
+        
+        .search-input-group button:hover {
+            background: #2563eb;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
         /* --- RESULT CARD --- */
+        
         #result-card {
             display: none;
             margin-top: 30px;
@@ -89,8 +108,10 @@
             padding: 25px;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+        
         .seat-highlight {
-            background: rgba(16, 185, 129, 0.1); /* Green tint */
+            background: rgba(16, 185, 129, 0.1);
+            /* Green tint */
             border: 1px solid rgba(16, 185, 129, 0.3);
             border-radius: 12px;
             padding: 15px;
@@ -99,23 +120,25 @@
             align-items: center;
             gap: 15px;
         }
-
         /* --- MAP VISUALIZER --- */
+        
         .map-panel {
-            border-left: 1px solid rgba(255,255,255,0.1);
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
             padding-left: 40px;
             display: flex;
             flex-direction: column;
             justify-content: center;
         }
-
         /* SCROLLABLE GRID CONTAINER (Fixes alignment issues) */
+        
         #grid-scroll-wrapper {
             max-width: 100%;
-            overflow-x: auto; /* Adds scrollbar if room is too wide */
+            overflow-x: auto;
+            /* Adds scrollbar if room is too wide */
             padding-bottom: 10px;
             display: flex;
-            justify-content: center; /* Centers grid if small */
+            justify-content: center;
+            /* Centers grid if small */
         }
         
         #visual-grid {
@@ -123,18 +146,19 @@
             gap: 6px;
             margin: 0 auto;
         }
-
+        
         .seat-box {
-            width: 35px; /* Fixed width for alignment */
+            width: 35px;
+            /* Fixed width for alignment */
             height: 35px;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 0.65rem;
-            color: rgba(255,255,255,0.4);
+            color: rgba(255, 255, 255, 0.4);
         }
         
         .seat-box.my-seat {
@@ -146,73 +170,88 @@
             transform: scale(1.15);
             z-index: 5;
         }
-
         /* Custom Scrollbar for Grid */
-        #grid-scroll-wrapper::-webkit-scrollbar { height: 6px; }
-        #grid-scroll-wrapper::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
-
-        .back-btn { position: absolute; top: 30px; left: 30px; color: rgba(255,255,255,0.6); text-decoration: none; font-size: 0.9rem; transition: 0.2s; }
-        .back-btn:hover { color: white; transform: translateX(-5px); }
-
-       /* --- MOBILE OPTIMIZATION FIX --- */
-    @media (max-width: 992px) {
-        body {
-            /* FIX: Allow normal scrolling flow on mobile */
-            display: block; 
-            height: auto;
-            min-height: 100vh;
-            padding-top: 20px; 
-            padding-bottom: 20px;
+        
+        #grid-scroll-wrapper::-webkit-scrollbar {
+            height: 6px;
         }
-
-        .main-container {
-            /* FIX: Reduce padding to save space */
-            padding: 20px;
-            margin-top: 40px; /* Space for the back button */
+        
+        #grid-scroll-wrapper::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
         }
-
+        
         .back-btn {
-            top: 15px;
-            left: 20px;
-        }
-
-        .map-panel { 
-            border-left: none; 
-            padding-left: 0; 
-            margin-top: 30px; 
-            border-top: 1px solid rgba(255,255,255,0.1); 
-            padding-top: 30px; 
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: 0.2s;
         }
         
-        #grid-scroll-wrapper { 
-            justify-content: flex-start; /* Align grid to start for swiping */
+        .back-btn:hover {
+            color: white;
+            transform: translateX(-5px);
         }
-
-        h1.display-5 {
-            font-size: 2rem; /* Reduce heading size */
-        }
+        /* --- MOBILE OPTIMIZATION FIX --- */
         
-        .search-input-group input {
-            padding: 12px;
+        @media (max-width: 992px) {
+            body {
+                /* FIX: Allow normal scrolling flow on mobile */
+                display: block;
+                height: auto;
+                min-height: 100vh;
+                padding-top: 20px;
+                padding-bottom: 20px;
+            }
+            .main-container {
+                /* FIX: Reduce padding to save space */
+                padding: 20px;
+                margin-top: 40px;
+                /* Space for the back button */
+            }
+            .back-btn {
+                top: 15px;
+                left: 20px;
+            }
+            .map-panel {
+                border-left: none;
+                padding-left: 0;
+                margin-top: 30px;
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+                padding-top: 30px;
+            }
+            #grid-scroll-wrapper {
+                justify-content: flex-start;
+                /* Align grid to start for swiping */
+            }
+            h1.display-5 {
+                font-size: 2rem;
+                /* Reduce heading size */
+            }
+            .search-input-group input {
+                padding: 12px;
+            }
+            .search-input-group button {
+                padding: 0 20px;
+            }
         }
-        
-        .search-input-group button {
-            padding: 0 20px;
-        }
-    }
-</style>
+    </style>
 </head>
+
 <body>
 
     <a href="/api/landing" class="back-btn"><i class="fas fa-arrow-left"></i> Back to Home</a>
 
     <div class="main-container">
         <div class="row">
-            
+
             <div class="col-lg-5 search-panel d-flex flex-column justify-content-center">
                 <h1 class="display-5 fw-bold mb-2">Find Your Seat</h1>
-                <p class="mb-4 text-white-50">Enter your Registration ID or Roll Number below.</p>
-                
+                <p class="mb-4 text-white-50">Enter your Registration Number below</p>
+
                 <div class="search-input-group mb-3">
                     <input type="text" id="ai-input" placeholder="e.g. 2411003D">
                     <button onclick="findSeat()" id="search-btn">Search</button>
@@ -267,11 +306,11 @@
                         <span class="text-success fw-bold">● You</span> &nbsp; <span class="opacity-50">□ Others</span>
                     </div>
                 </div>
-                
+
                 <div id="grid-scroll-wrapper">
                     <div id="visual-grid"></div>
                 </div>
-                
+
                 <div id="visual-placeholder" class="text-center opacity-25 mt-5">
                     <i class="fas fa-th fa-5x"></i>
                     <p class="mt-3">Room map will appear here</p>
@@ -282,93 +321,97 @@
     </div>
 
     <script>
-    async function findSeat() {
-        const query = document.getElementById('ai-input').value;
-        const btn = document.getElementById('search-btn');
-        const resultCard = document.getElementById('result-card');
-        const errorMsg = document.getElementById('error-msg');
-        const grid = document.getElementById('visual-grid');
-        const placeholder = document.getElementById('visual-placeholder');
-        const legend = document.getElementById('legend');
+        async function findSeat() {
+            const query = document.getElementById('ai-input').value;
+            const btn = document.getElementById('search-btn');
+            const resultCard = document.getElementById('result-card');
+            const errorMsg = document.getElementById('error-msg');
+            const grid = document.getElementById('visual-grid');
+            const placeholder = document.getElementById('visual-placeholder');
+            const legend = document.getElementById('legend');
 
-        if(!query) return;
+            if (!query) return;
 
-        // --- RESET UI (This fixes your issue) ---
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        resultCard.style.display = 'none';
-        errorMsg.style.display = 'none';
-        
-        // Hides the previous map and legend immediately
-        legend.style.display = 'none';
-        grid.innerHTML = ''; 
-        placeholder.style.display = 'block'; 
+            // --- RESET UI (This fixes your issue) ---
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            resultCard.style.display = 'none';
+            errorMsg.style.display = 'none';
 
-        // Remove old alert colors
-        errorMsg.classList.remove('alert-danger', 'bg-danger', 'alert-info', 'bg-info');
+            // Hides the previous map and legend immediately
+            legend.style.display = 'none';
+            grid.innerHTML = '';
+            placeholder.style.display = 'block';
 
-        try {
-            const res = await fetch(`/api/seat-lookup?query=${query}`);
-            const data = await res.json();
+            // Remove old alert colors
+            errorMsg.classList.remove('alert-danger', 'bg-danger', 'alert-info', 'bg-info');
 
-            if (data.status === 'success') {
-                // --- SUCCESS: Fill Data ---
-                document.getElementById('res-name').innerText = data.student_info.name;
-                document.getElementById('res-branch').innerText = data.student_info.branch;
-                document.getElementById('res-date').innerText = data.seat_details.exam_date || 'N/A';
-                document.getElementById('res-time').innerText = data.seat_details.exam_time || 'N/A';
-                document.getElementById('res-building').innerText = data.seat_details.building;
-                document.getElementById('res-room').innerText = data.seat_details.room;
-                document.getElementById('res-seat').innerText = data.seat_details.seat;
+            try {
+                const res = await fetch(`/api/seat-lookup?query=${query}`);
+                const data = await res.json();
 
-                // --- Draw New Grid ---
-                if (data.layout) {
-                    placeholder.style.display = 'none';
-                    legend.style.display = 'block';
-                    
-                    grid.style.gridTemplateColumns = `repeat(${data.layout.total_cols}, 1fr)`;
+                if (data.status === 'success') {
+                    // --- SUCCESS: Fill Data ---
+                    document.getElementById('res-name').innerText = data.student_info.name;
+                    document.getElementById('res-branch').innerText = data.student_info.branch;
+                    document.getElementById('res-date').innerText = data.seat_details.exam_date || 'N/A';
+                    document.getElementById('res-time').innerText = data.seat_details.exam_time || 'N/A';
+                    document.getElementById('res-building').innerText = data.seat_details.building;
+                    document.getElementById('res-room').innerText = data.seat_details.room;
+                    document.getElementById('res-seat').innerText = data.seat_details.seat;
 
-                    let targetRow = data.layout.my_row;
-                    let targetCol = data.layout.my_col;
-                    
-                    // Smart parse seat "R1-C6" if needed
-                    if(data.seat_details.seat) {
-                        const match = data.seat_details.seat.match(/R(\d+)-C(\d+)/);
-                        if(match) { targetRow = parseInt(match[1]); targetCol = parseInt(match[2]); }
-                    }
+                    // --- Draw New Grid ---
+                    if (data.layout) {
+                        placeholder.style.display = 'none';
+                        legend.style.display = 'block';
 
-                    for (let r = 1; r <= data.layout.total_rows; r++) {
-                        for (let c = 1; c <= data.layout.total_cols; c++) {
-                            const box = document.createElement('div');
-                            box.className = 'seat-box';
-                            if (r === targetRow && c === targetCol) {
-                                box.classList.add('my-seat');
-                                box.innerText = "YOU";
-                            } else {
-                                box.innerText = `${r}-${c}`;
+                        grid.style.gridTemplateColumns = `repeat(${data.layout.total_cols}, 1fr)`;
+
+                        let targetRow = data.layout.my_row;
+                        let targetCol = data.layout.my_col;
+
+                        // Smart parse seat "R1-C6" if needed
+                        if (data.seat_details.seat) {
+                            const match = data.seat_details.seat.match(/R(\d+)-C(\d+)/);
+                            if (match) {
+                                targetRow = parseInt(match[1]);
+                                targetCol = parseInt(match[2]);
                             }
-                            grid.appendChild(box);
+                        }
+
+                        for (let r = 1; r <= data.layout.total_rows; r++) {
+                            for (let c = 1; c <= data.layout.total_cols; c++) {
+                                const box = document.createElement('div');
+                                box.className = 'seat-box';
+                                if (r === targetRow && c === targetCol) {
+                                    box.classList.add('my-seat');
+                                    box.innerText = "YOU";
+                                } else {
+                                    box.innerText = `${r}-${c}`;
+                                }
+                                grid.appendChild(box);
+                            }
                         }
                     }
-                }
-                resultCard.style.display = 'block';
+                    resultCard.style.display = 'block';
 
-            } else {
-                // --- NOT ALLOCATED ---
-                // The map is already hidden/cleared by the Reset UI section above
-                errorMsg.classList.add('alert-info', 'bg-info'); 
-                errorMsg.innerHTML = '<i class="fas fa-info-circle"></i> Your new sitting plan will be updated shortly.';
+                } else {
+                    // --- NOT ALLOCATED ---
+                    // The map is already hidden/cleared by the Reset UI section above
+                    errorMsg.classList.add('alert-info', 'bg-info');
+                    errorMsg.innerHTML = '<i class="fas fa-info-circle"></i> Your new sitting plan will be updated shortly.';
+                    errorMsg.style.display = 'block';
+                }
+
+            } catch (err) {
+                // --- ERROR ---
+                errorMsg.classList.add('alert-danger', 'bg-danger');
+                errorMsg.innerText = "Connection failed. Please try again.";
                 errorMsg.style.display = 'block';
             }
 
-        } catch (err) {
-            // --- ERROR ---
-            errorMsg.classList.add('alert-danger', 'bg-danger');
-            errorMsg.innerText = "Connection failed. Please try again.";
-            errorMsg.style.display = 'block';
+            btn.innerHTML = 'Search';
         }
-        
-        btn.innerHTML = 'Search';
-    }
-</script>
+    </script>
 </body>
+
 </html>
