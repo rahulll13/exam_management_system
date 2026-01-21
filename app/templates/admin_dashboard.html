@@ -2366,15 +2366,18 @@
             let headerRow1 = '';
             let headerRow2 = '';
 
+            // Generate header columns for subjects
             for (let i = 0; i < subjectCount; i++) {
-                headerRow1 += `<th colspan="2">Date: .......................<br>Subject: ....................</th>`;
-                headerRow2 += `<th>Book. No.</th><th>Signature</th>`;
+                headerRow1 += `<th colspan="2" style="padding: 8px;">Date: .......................<br>Subject: ....................</th>`;
+                headerRow2 += `<th style="padding: 8px;">Book. No.</th><th style="padding: 8px;">Signature</th>`;
             }
 
+            // Generate empty grid cells for the footer rows (merged 2-by-2 for valid signature space)
+            const footerEmptyCells = Array(subjectCount).fill('<td colspan="2" style="border: 1px solid black;"></td>').join('');
+
             try {
-                // We encode the time to handle spaces and brackets like (1st Sitting) safely
-                // ✅ ADD encodeURIComponent(time) HERE:
-                const res = await fetch(`/api/admin/attendance-sheet-data?exam_id=${time}&room_id=${roomId}`);
+                // Encode time to safely handle spaces/special chars
+                const res = await fetch(`/api/admin/attendance-sheet-data?exam_id=${encodeURIComponent(time)}&room_id=${roomId}`);
                 const json = await res.json();
 
                 if (json.error) return alert(json.error);
@@ -2384,51 +2387,70 @@
                 container.innerHTML = '';
 
                 json.sheets.forEach(sheet => {
+                            // Generate empty cells for student rows
                             let emptyBodyCells = '';
                             for (let i = 0; i < subjectCount; i++) {
-                                emptyBodyCells += '<td></td><td></td>';
+                                emptyBodyCells += '<td style="border: 1px solid black;"></td><td style="border: 1px solid black;"></td>';
                             }
 
                             const html = `
-                    <div class="att-sheet">
-                        <div class="att-title">ATTENDANCE SHEET</div>
-                        <div class="att-sub">JUT, RANCHI</div>
-                        <div class="att-sub">B.I.T. SINDRI</div>
-                        <div class="att-sub">EXAMINATION SECTION</div>
-                        <div style="text-align: right; font-weight: bold; margin-bottom: 10px;">Hall No. ${sheet.hall_no}</div>
+                    <div class="att-sheet" style="padding: 30px; font-family: 'Times New Roman', serif;">
+                        <div class="att-title" style="font-size: 24px; font-weight: bold; text-align: center; text-decoration: underline; margin-bottom: 5px;">ATTENDANCE SHEET</div>
+                        <div class="att-sub" style="font-size: 18px; font-weight: bold; text-align: center;">JUT, RANCHI</div>
+                        <div class="att-sub" style="font-size: 18px; font-weight: bold; text-align: center;">B.I.T. SINDRI</div>
+                        <div class="att-sub" style="font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 20px;">EXAMINATION SECTION</div>
                         
-                        <table class="att-meta" style="width:100%; font-weight:bold; font-size:14px; margin-bottom:15px;">
-                            <tr><td>Name of Examination: ${sheet.exam_name}</td><td style="text-align:right">Session: ${sheet.semester}</td></tr>
-                            <tr><td>Name of Institute: B.I.T. Sindri</td><td style="text-align:right">Centre: B.I.T.</td></tr>
-                            <tr><td>Course: B. Tech</td><td style="text-align:right">Branch: ${sheet.branch}</td></tr>
+                        <div style="text-align: right; font-weight: bold; font-size: 16px; margin-bottom: 10px;">Hall No. ${sheet.hall_no}</div>
+                        
+                        <table class="att-meta" style="width:100%; font-weight:bold; font-size:16px; margin-bottom:20px;">
+                            <tr><td style="padding: 4px 0;">Name of Examination: ${sheet.exam_name}</td><td style="text-align:right">Session: ${sheet.semester}</td></tr>
+                            <tr><td style="padding: 4px 0;">Name of Institute: B.I.T. Sindri</td><td style="text-align:right">Centre: B.I.T.</td></tr>
+                            <tr><td style="padding: 4px 0;">Course: B. Tech</td><td style="text-align:right">Branch: ${sheet.branch}</td></tr>
                         </table>
 
-                        <table class="att-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <table class="att-table" style="width: 100%; border-collapse: collapse; font-size: 14px;">
                             <thead>
-                                <tr><th rowspan="2" style="width: 3%">Sl.<br>No.</th><th rowspan="2" style="width: 12%">Reg No</th><th rowspan="2" style="width: 20%">Name</th>${headerRow1}</tr>
+                                <tr>
+                                    <th rowspan="2" style="width: 5%; border: 1px solid black; padding: 8px;">Sl.<br>No.</th>
+                                    <th rowspan="2" style="width: 15%; border: 1px solid black; padding: 8px;">Reg No</th>
+                                    <th rowspan="2" style="width: 20%; border: 1px solid black; padding: 8px;">Name</th>
+                                    ${headerRow1}
+                                </tr>
                                 <tr>${headerRow2}</tr>
                             </thead>
                             <tbody>
-                                ${sheet.students.map(s => `<tr><td style="text-align:center; padding: 5px;">${s.sl}</td><td style="text-align:center; padding: 5px;">${s.reg_no || 'N/A'}</td><td class="att-left" style="padding: 5px;">${s.name}</td>${emptyBodyCells}</tr>`).join('')}
+                                ${sheet.students.map(s => `
+                                    <tr>
+                                        <td style="text-align:center; padding: 10px 5px; border: 1px solid black;">${s.sl}</td>
+                                        <td style="text-align:center; padding: 10px 5px; border: 1px solid black;">${s.reg_no || 'N/A'}</td>
+                                        <td class="att-left" style="padding: 10px 5px; text-align: left; border: 1px solid black;">${s.name}</td>
+                                        ${emptyBodyCells}
+                                    </tr>
+                                `).join('')}
+                                
+                                <tr style="height: 50px;">
+                                    <td colspan="3" style="text-align: right; font-weight: bold; font-size: 15px; padding: 10px; border: 1px solid black;">Total No. of Students &rarr;</td>
+                                    ${footerEmptyCells}
+                                </tr>
+                                
+                                <tr style="height: 50px;">
+                                    <td colspan="3" style="text-align: right; font-weight: bold; font-size: 15px; padding: 10px; border: 1px solid black;">Signature of Invigilator &rarr;</td>
+                                    ${footerEmptyCells}
+                                </tr>
                             </tbody>
-                        </table>
-
-                        <table class="att-footer" style="width:100%; margin-top:20px; font-weight:bold;">
-                            <tr><td style="width: 30%; border:none;">Total No. of Students →</td><td style="border-bottom: 1px solid black; width: 10%;"></td><td style="border:none;"></td></tr>
-                            <tr><td style="border:none; padding-top:10px;">Signature of Invigilator →</td><td style="border-bottom: 1px solid black; padding-top:10px;"></td><td style="border:none;"></td></tr>
                         </table>
                     </div>
                     `;
-                    container.innerHTML += html;
-                });
+                        container.innerHTML += html;
+                    });
 
-                document.getElementById('attendance-preview').style.display = 'block';
+                    document.getElementById('attendance-preview').style.display = 'block';
 
-            } catch (e) {
-                console.error(e);
-                alert("Error fetching data. Ensure seating is generated first.");
+                } catch (e) {
+                    console.error(e);
+                    alert("Error fetching data. Ensure seating is generated first.");
+                }
             }
-        }
 
         async function generateDistribution() {
                 const date = document.getElementById('dist_date').value;
